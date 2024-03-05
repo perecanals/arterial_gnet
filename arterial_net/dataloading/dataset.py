@@ -8,7 +8,7 @@ from torch_geometric.data import InMemoryDataset, Data
 
 from sklearn.model_selection import train_test_split
 
-from arterial_maps.dataloading.utils import load_pickle, z_score_normalization, min_max_normalization, mean_centering_normalization, normalize_vector
+from arterial_net.dataloading.utils import load_pickle, z_score_normalization, min_max_normalization, mean_centering_normalization, normalize_vector
 
 class ArterialMapsDataset(InMemoryDataset):
     """
@@ -143,7 +143,7 @@ class ArterialMapsDataset(InMemoryDataset):
         mapping = {node: idx for idx, node in enumerate(graph_nx.nodes)}
         return nx.relabel_nodes(graph_nx, mapping)
     
-    def get_splits(self, train_files=None, test_files=None, train_idx=None, test_idx=None, test_size=0.2, random_state=42):
+    def get_splits(self, train_files=None, test_files=None, train_idx=None, test_idx=None, test_size=0.2, random_state=42, oversample=False):
         """
         Creates train and test splits from the dataset.
 
@@ -177,6 +177,8 @@ class ArterialMapsDataset(InMemoryDataset):
             Test size, by default 0.2
         random_state : int, optional
             Random state, by default 42
+        oversample : bool, optional
+            Whether to perform oversampling of the minority classes, by default False
 
         Returns
         -------
@@ -200,7 +202,7 @@ class ArterialMapsDataset(InMemoryDataset):
         else:
             indices = list(range(len(self.raw_file_names)))
             train_idx, test_idx = train_test_split(indices, test_size=test_size, train_size = 1 - test_size, random_state=random_state)
-        
+
         # Get the file names for the train and test splits
         train_files = [self.raw_file_names[i] for i in train_idx]
         test_files = [self.raw_file_names[i] for i in test_idx]
@@ -291,7 +293,7 @@ class ArterialMapsDataset(InMemoryDataset):
 
 
 def generate_ArterialMaps_dataset_json(
-        root="/Users/pere/opt/Arterial/development/arterial_maps/data/root", 
+        root=os.environ["arterial_maps_root"], 
         dataset_name = "Arterial Maps",
         name_regression_label = "T1A",
         name_classification_label = "classification",
@@ -475,5 +477,3 @@ def generate_ArterialMaps_dataset_json(
      # Save the json file
     with open(os.path.join(root, "dataset.json"), "w") as f:
         json.dump(dataset_dict, f, indent=4)
-
-generate_ArterialMaps_dataset_json()

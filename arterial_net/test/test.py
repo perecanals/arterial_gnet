@@ -55,7 +55,7 @@ def run_testing(root, model_name, test_loader, model=None, device="cpu", fold=No
         # In validation we do not keep track of gradients
         with torch.no_grad():
             # Perform inference with single graph
-            pred = model(graph.to(device)).to("cpu")
+            pred = model(graph.to(device))
         if is_classification:
             # Get label from graph
             label = graph.y_class
@@ -84,17 +84,17 @@ def run_testing(root, model_name, test_loader, model=None, device="cpu", fold=No
     for graph in test_loader:
         pred, label, met = test_step(model, graph)
         if is_classification:
-            preds.append(1 - pred.numpy()[0][0])
-            labels.append(label.numpy()[0])
+            preds.append(1 - pred.cpu().numpy()[0][0])
+            labels.append(label.cpu().numpy()[0])
             metric_test.append(met)
-            class_labels.append(graph.y_class.numpy()[0])
+            class_labels.append(graph.cpu().y_class.numpy()[0])
         else:
-            preds.append(pred.numpy()[0][0])
-            labels.append(label.numpy()[0])
+            preds.append(pred.cpu().numpy()[0][0])
+            labels.append(label.cpu().numpy()[0])
             metric_test.append(met)
-            class_labels.append(graph.y_class.numpy()[0])
-        np.save(os.path.join(model_path, "test", "labels", f"{graph.id[0]}.npy"), label)
-        np.save(os.path.join(model_path, "test", "preds", f"{graph.id[0]}.npy"), pred)
+            class_labels.append(graph.cpu().y_class.numpy()[0])
+        np.save(os.path.join(model_path, "test", "labels", f"{graph.id[0]}.npy"), label.cpu())
+        np.save(os.path.join(model_path, "test", "preds", f"{graph.id[0]}.npy"), pred.cpu())
 
     # Saves testing metrics in test directory
     if is_classification:
@@ -128,7 +128,8 @@ def run_testing(root, model_name, test_loader, model=None, device="cpu", fold=No
     print(f"Testing metric (lowest validation loss) was {np.mean(metric_test):.4f}")
     print()
 
-    compute_results_over_folds(root, model_name)
+    if fold is not None:
+        compute_results_over_folds(root, model_name)
 
 def compute_results_over_folds(root, model_name):
     """
@@ -208,5 +209,5 @@ def compute_results_over_folds(root, model_name):
     print(f"MCC:         {np.mean(mccs):.4f} ({np.mean(mccs) - 1.96 * np.std(mccs) / np.sqrt(len(mccs)):.4f} - {np.mean(mccs) + 1.96 * np.std(mccs) / np.sqrt(len(mccs)):.4f})")
     print()
 
-    with open(os.path.join(model_dir, "test", "results_folds.pickle"), "wb") as f:
+    with open(os.path.join(model_dir, "results_folds.pickle"), "wb") as f:
         pickle.dump(results_folds, f)

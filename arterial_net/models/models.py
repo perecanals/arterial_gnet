@@ -36,10 +36,10 @@ def get_model(args, dataset_description, device = "cpu"):
         String with the model name, where data (train and test) will be 
         in os.path.join(root, "models", model_name).
     """
-    model_name = "{}_bs-{}_te-{}_hc-{}_lr-{}_ngl-{}_nsl-{}_ndl-{}_agg-{}_drop-{}_wl-{}_rs-{}".format(args.base_model_name, args.batch_size, \
-                                                                           args.total_epochs, args.hidden_channels, args.learning_rate, args.num_global_layers, \
-                                                                            args.num_segment_layers, args.num_dense_layers, \
-                                                                                args.aggregation, args.dropout,  args.weighted_loss, args.random_state)
+    model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs-{}_ngl-{}_nsl-{}_ndl-{}_agg-{}_drop-{}_wl-{}_os-{}_rs-{}".format(args.base_model_name, args.batch_size, \
+                                                                           args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, args.lr_scheduler, \
+                                                                           args.num_global_layers, args.num_segment_layers, args.num_dense_layers, args.aggregation, \
+                                                                                args.dropout, args.weighted_loss, args.oversampling, args.random_state)
     if args.is_classification:
         model_name += "_class"
     if args.tag is not None:
@@ -53,6 +53,7 @@ def get_model(args, dataset_description, device = "cpu"):
     print(f"Number of dense layers:         {args.num_dense_layers}")
     print(f"Aggregation method:             {args.aggregation}")
     print(f"Dropout:                        {args.dropout}")
+    print(f"Oversampling:                   {args.oversampling}")
 
     # Initialize model with the corresponding parameters
     if args.base_model_name == "ArterialNet":
@@ -61,11 +62,11 @@ def get_model(args, dataset_description, device = "cpu"):
             segment_node_in_dim=dataset_description["num_segment_node_features"], 
             segment_edge_in_dim=dataset_description["num_segment_edge_features"],
             dense_node_in_dim=dataset_description["num_dense_node_features"],
-            hidden_dim=32, 
+            hidden_dim=args.hidden_channels, 
             out_dim=3 if args.is_classification else 1,
-            num_global_layers=1,
-            num_segment_layers=2, 
-            num_dense_layers=2,
+            num_global_layers=args.num_global_layers,
+            num_segment_layers=args.num_segment_layers, 
+            num_dense_layers=args.num_dense_layers,
             aggregation=args.aggregation,
             dropout=args.dropout,
             is_classification=args.is_classification
@@ -93,15 +94,15 @@ class GATv2Layer(nn.Module):
 
 class ArterialNet(nn.Module):
     def __init__(
-            self, 
-            global_in_dim, 
-            segment_node_in_dim, 
-            segment_edge_in_dim, 
-            dense_node_in_dim, 
-            hidden_dim, 
+            self,
+            global_in_dim,
+            segment_node_in_dim,
+            segment_edge_in_dim,
+            dense_node_in_dim,
+            hidden_dim,
             out_dim,
-            num_global_layers, 
-            num_segment_layers, 
+            num_global_layers,
+            num_segment_layers,
             num_dense_layers,
             aggregation="max",
             dropout=0.2,
@@ -124,15 +125,21 @@ class ArterialNet(nn.Module):
             self.dense_path.append(GATv2Layer(dense_node_in_dim if idx == 0 else hidden_dim, hidden_dim, dropout_rate=dropout))
         if is_classification:
             self.output_layer = nn.Sequential(
-                nn.Linear(hidden_dim * 3, out_dim),
+                nn.Linear(hidden_dim * sum([num_global_layers > 0, num_segment_layers > 0, num_dense_layers > 0]), out_dim),
                 nn.Softmax(dim=1)
             )
-        else:
-            self.output_layer = nn.Linear(hidden_dim * 3, out_dim)
             # self.output_layer = nn.Sequential(
-            #     nn.Linear(hidden_dim * 3, hidden_dim),
+            #     nn.Linear(hidden_dim * sum([num_global_layers > 0, num_segment_layers > 0, num_dense_layers > 0]), hidden_dim),
             #     nn.LeakyReLU(negative_slope=0.2),
-            #     nn.BatchNorm1d(hidden_dim),
+            #     nn.Dropout(p=dropout),
+            #     nn.Linear(hidden_dim, out_dim),
+            #     nn.Softmax(dim=1)
+            # )
+        else:
+            self.output_layer = nn.Linear(hidden_dim * sum([num_global_layers > 0, num_segment_layers > 0, num_dense_layers > 0]), out_dim)
+            # self.output_layer = nn.Sequential(
+            #     nn.Linear(hidden_dim * sum([num_global_layers > 0, num_segment_layers > 0, num_dense_layers > 0]), hidden_dim),
+            #     nn.LeakyReLU(negative_slope=0.2),
             #     nn.Dropout(p=dropout),
             #     nn.Linear(hidden_dim, out_dim)
             # )

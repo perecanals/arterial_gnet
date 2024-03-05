@@ -16,12 +16,14 @@ def main(root, args):
     print("Running training and testing for ArterialNet\n")
 
     # Read device
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
     #################################### Dataset organization ############################################
     # Define pre-transforms (applied to the graph before batching, regardless of training or testing)
     pre_transform, train_transform, test_transform = get_transforms(device)
     for fold in (range(args.folds) if args.folds is not None else [None]):
+        if args.folds is not None and args.skip_folds is not None and fold < args.skip_folds:
+            continue
         # Get data loaders
         train_loader, val_loader, test_loader = get_data_loaders(root, args, fold, pre_transform, train_transform, test_transform)
 
@@ -34,7 +36,7 @@ def main(root, args):
         if args.train:
             if args.is_classification:
                 # Define loss function
-                if dataset_description["graph_class_frequencies"] is not None:
+                if dataset_description["graph_class_frequencies"] is not None and not args.oversampling:
                     if args.class_loss == "ce":
                         loss_function = torch.nn.CrossEntropyLoss(weight = 1 / torch.tensor(dataset_description["graph_class_frequencies"], dtype=torch.float).to(device))
                     elif args.class_loss == "nll":
@@ -61,13 +63,9 @@ def main(root, args):
                 train_loader,
                 val_loader,
                 loss_function,
-                total_epochs = args.total_epochs,
-                learning_rate = args.learning_rate,
-                optim = args.optimizer,
-                lr_scheduler = args.lr_scheduler,
-                device = device,
+                args,
                 fold = fold,
-                is_classification = args.is_classification
+                device = device
             )
 
         if args.test:
@@ -85,10 +83,9 @@ def main(root, args):
 if __name__ == "__main__":
     import os, sys
     import argparse
-    sys.path.append("/Users/pere/opt/Arterial/development/arterial_maps")
 
-    # root = os.environ["arterial_maps_root"]
-    root = "/Users/pere/opt/Arterial/development/arterial_maps/data/root"
+    sys.path.append("/home/vhir/github/arterial_net/arterial_net")
+    root = os.environ["arterial_maps_root"]
 
     # Create argument parser
     parser = argparse.ArgumentParser(description='Train and test the model for ArterialMaps.')
@@ -116,10 +113,10 @@ if __name__ == "__main__":
         help='Optimizer. Default is adam.')
     parser.add_argument('-lr', '--learning_rate', type=float, default=0.01, 
         help='Initial learning rate. Default is 0.01.')
-    parser.add_argument('-lrs', '--lr_scheduler', type=str, default=True, choices=['True', 'False'],
+    parser.add_argument('-lrs', '--lr_scheduler', type=str, default="poly", choices=['poly', 'plateau', 'None'],
         help='Learning rate scheduler. Default is True.')
-    parser.add_argument('-agg', '--aggregation', type=str, default="max", choices=["mean", "add", "max"],
-        help='Aggregation method. Default is max.')
+    parser.add_argument('-agg', '--aggregation', type=str, default="mean", choices=["mean", "add", "max"],
+        help='Aggregation method. Default is mean.')
     parser.add_argument('-wl', '--weighted_loss', type=str, default="exp", choices=['exp', "lin", "log", 'None'],
         help='Whether to use weighted loss and what type. Default is exp.')
     parser.add_argument('-drop', '--dropout', type=float, default=0.2,
@@ -128,6 +125,8 @@ if __name__ == "__main__":
         help='Random state for splitting the dataset. Default is 42.')
     parser.add_argument('-f', '--folds', type=int, default=None,
         help='Folds number. Default is None.')
+    parser.add_argument('-sf', '--skip_folds', type=int, default=None,
+        help='Skip to fold. Default is None.')
     parser.add_argument('-train', '--train', type=str, default=True, choices=['True', 'False'],
         help='Whether to train the model. Default is True.')
     parser.add_argument('-test', '--test', type=str, default=True, choices=['True', 'False'],
@@ -138,9 +137,16 @@ if __name__ == "__main__":
         help='Loss function for classification. Default is ce.')
     parser.add_argument('-tag', '--tag', type=str, default=None,
         help='Additional tag to add to the model name for identification. Default is None.')
+    parser.add_argument('-nw', '--num_workers', type=int, default=2,
+        help='Number of workers for the DataLoader (unused). Default is 2.')
+    parser.add_argument('-os', '--oversampling', type=str, default=False, choices=['True', 'False'],
+        help='Whether to use oversampling. Default is False.')
 
     # Parse arguments
     args = parser.parse_args()
+
+    if args.lr_scheduler == "None":
+        args.lr_scheduler = None
 
     # Set random state
     import random
@@ -152,5 +158,13 @@ if __name__ == "__main__":
     torch.manual_seed(args.random_state)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
+    import time
+
+    start = time.time()
     
     main(root, args)
+
+    end = time.time()
+
+    print("Time elapsed: {:.2f} seconds".format(end - start))

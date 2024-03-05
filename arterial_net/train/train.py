@@ -8,7 +8,7 @@ from arterial_net.utils.metrics import compute_accuracy, compute_rmse
 
 import torch
 
-def run_training(root, model, model_name, train_loader, val_loader, loss_function, total_epochs=500, optim="adam", learning_rate=0.01, lr_scheduler=True, device="cpu", fold=None, is_classification=False):
+def run_training(root, model, model_name, train_loader, val_loader, loss_function, args, fold=None, device="cpu"):
     """
     Trainer function for a given model. Thought out for GraphUNet for node classification.
 
@@ -26,20 +26,23 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         DataLoader for validation.
     loss_function : torch.nn.Module
         Loss function to use.
-    total_epochs : int, optional
-        Number of epochs to train. The default is 500.
-    optim : string, optional
-        Optimizer to use. The default is "adam".
-    learning_rate : float, optional
-        Initial learning rate. The default is 0.01.
-    lr_scheduler : bool, optional
-        Whether to use a learning rate scheduler. The default is True.
+    args : argparse.Namespace
+        Arguments. Contains:
+            - total_epochs : int
+                Total number of epochs to train.
+            - optim : string
+                Optimizer to use.
+            - learning_rate : float
+                Initial learning rate.
+            - lr_scheduler : bool
+                Whether to use a learning rate scheduler.
+            - is_classification : bool
+                Whether the task is classification or regression.
+    fold : int, optional
+        Fold for cross validation. The default is None.
     device : string, optional
         Device to use for training. The default is "cpu".
-    fold : int, optional
-        Fold number. The default is None.
-    classification : bool, optional
-        Whether the task is classification or regression. The default is False.
+
     """
     def train_step(model, batch):
         """
@@ -66,7 +69,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         # Perform forward pass with batch
         out = model(batch.to(device)).to(device)
         # Compute loss
-        if is_classification:
+        if args.is_classification:
             loss = loss_function(out, batch.y_class)
             # Compute back propagation
             loss.backward() 
@@ -109,7 +112,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             # Perform forward pass with batch
             out = model(batch.to(device)).to(device)
             # Compute validation loss
-            if is_classification:
+            if args.is_classification:
                 loss = loss_function(out, batch.y_class)
                 # Compute accuracy for validation
                 metric = compute_accuracy(out.argmax(dim=1), batch.y_class)
@@ -121,12 +124,13 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
     
     print("\n------------------------------------------------ Training parameters")
     print(f"Batch size:                     {train_loader.batch_size}")
-    print(f"Total epochs:                   {total_epochs}")
-    print(f"Optimizer:                      {optim}")
-    print(f"Initial learning rate:          {learning_rate}")
-    print(f"Learning rate scheduler:        {lr_scheduler}")
+    print(f"Total epochs:                   {args.total_epochs}")
+    print(f"Optimizer:                      {args.optimizer}")
+    print(f"Initial learning rate:          {args.learning_rate}")
+    print(f"Learning rate scheduler:        {args.lr_scheduler}")
     print(f"Loss function:                  {loss_function}")
-    print(f"Running on device:              {device} \n")
+    print(f"Running on device:              {device}")
+    print(f"Number of parameters:           {sum(p.numel() for p in model.parameters() if p.requires_grad)}\n")
 
     # Define model path
     model_path = os.path.join(root, "models", model_name)
@@ -135,35 +139,37 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
     os.makedirs(model_path, exist_ok=True)
     
     # Define optimizer and scheduler
-    if optim == "adam":
+    if args.optimizer == "adam":
         optimizer = torch.optim.Adam(
             model.parameters(), 
-            lr=learning_rate,
+            lr=args.learning_rate,
             betas=(0.9, 0.999),
             weight_decay=1e-03
             )
-    elif optim == "sgd":
+    elif args.optimizer == "sgd":
         optimizer = torch.optim.SGD(
             model.parameters(), 
-            lr=learning_rate, 
-            momentum=0.99, 
+            lr=args.learning_rate, 
+            momentum=0.9, 
             weight_decay=1e-03)
     
-    if lr_scheduler:
-        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        #     optimizer, 
-        #     mode='min', 
-        #     factor=0.1, 
-        #     patience=50, 
-        #     threshold=0.001, 
-        #     threshold_mode='rel', 
-        #     eps=1e-06,
-        #     verbose=True
-        #     )
-        scheduler = PolyLRScheduler(optimizer, 
-                                    initial_lr=learning_rate,
-                                    max_steps=total_epochs,
-                                    exponent=0.9)
+    if args.lr_scheduler is not None:
+        if args.lr_scheduler == "plateau":
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, 
+                mode='min', 
+                factor=0.5, 
+                patience=50, 
+                threshold=0.01, 
+                threshold_mode='rel', 
+                eps=1e-04,
+                verbose=True
+                )
+        elif args.lr_scheduler == "poly":
+            scheduler = PolyLRScheduler(optimizer, 
+                                        initial_lr=args.learning_rate,
+                                        max_steps=args.total_epochs,
+                                        exponent=0.9)
         
     # Initializes lists for loss and accuracy evolution during training
     losses_train = []
@@ -177,7 +183,8 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
     ewma_metric_val = []
 
     # Starts training
-    for epoch in range(0, total_epochs + 1):
+    for epoch in range(0, args.total_epochs + 1):
+        print("Epoch: {}/{}".format(epoch, args.total_epochs), end="\r")
         # Initializes in-epoch variables
         total_epoch_loss_train, total_epoch_loss_val = 0, 0
         metric_train_epoch_list, metric_val_epoch_list = [], []
@@ -195,9 +202,9 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             num_graphs_train += batch.segment_data.batch.max().item() + 1
 
         # Divides epoch accumulated training loss by number of graphs
-        total_epoch_loss_train = total_epoch_loss_train / num_graphs_train
+        total_epoch_loss_train = total_epoch_loss_train.cpu() / num_graphs_train
         # Appends training loss to tracking
-        losses_train.append(total_epoch_loss_train)
+        losses_train.append(total_epoch_loss_train.cpu())
         # Computes mean training accuracy across batches
         metric_train_epoch = np.mean(metric_train_epoch_list)
         # Appends training accuracy to tracking
@@ -218,9 +225,9 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             num_graphs_val += batch.segment_data.batch.max().item() + 1
 
         # Divides epoch accumulated validation loss by number of graphs
-        total_epoch_loss_val = total_epoch_loss_val / num_graphs_val
+        total_epoch_loss_val = total_epoch_loss_val.cpu() / num_graphs_val
         # Appends validation loss to tracking
-        losses_val.append(total_epoch_loss_val)
+        losses_val.append(total_epoch_loss_val.cpu())
         # Computes mean validation accuracy across batches
         metric_val_epoch = np.mean(metric_val_epoch_list)
         # Appends validation accuracy to tracking
@@ -237,34 +244,36 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             torch.save(model, os.path.join(model_path, "model_best_acc.pth"))
 
         # Updates learning rate policy if scheduler is used
-        if lr_scheduler:
-            # scheduler.step(total_epoch_loss_val)
-            scheduler.step(current_step=epoch)
+        if args.lr_scheduler is not None:
+            if args.lr_scheduler == "plateau":
+                scheduler.step(total_epoch_loss_val)
+            elif args.lr_scheduler == "poly":
+                scheduler.step(current_step=epoch)
         else:
             pass
 
         # Prints checkpoint every 100 epochs
         if epoch % 100 == 0:
             if fold is not None:
-                print(f"Epoch: {epoch:03d} (model {model_name}, fold {fold})")
+                print(f"Epoch: {epoch:04d} (model {model_name}, fold {fold})")
             else:
-                print(f"Epoch: {epoch:03d} (model {model_name})")
+                print(f"Epoch: {epoch:04d} (model {model_name})")
             print(f"Training loss (EWMA):       {ewma_losses_train[-1]:.4f}")
-            if is_classification:
+            if args.is_classification:
                 print(f"Training accuracy (EWMA):   {ewma_metric_train[-1]:.4f}")
             else:
                 print(f"Training RMSE (EWMA):       {ewma_metric_train[-1]:.4f}")
             print(f"Validation loss (EWMA):     {ewma_losses_val[-1]:.4f}")
-            if is_classification:
+            if args.is_classification:
                 print(f"Validation accuracy (EWMA): {ewma_metric_val[-1]:.4f}")
             else:
                 print(f"Validation RMSE (EWMA):     {ewma_metric_val[-1]:.4f}")
             print()
         
             # Make training plot
-            make_train_plot(model_path, ewma_losses_train, ewma_losses_val, ewma_metric_train, ewma_metric_val, is_classification)
+            make_train_plot(model_path, ewma_losses_train, ewma_losses_val, ewma_metric_train, ewma_metric_val, args.is_classification)
     
     print(f"Training finished.\n")
     
     # Make training plot
-    make_train_plot(model_path, ewma_losses_train, ewma_losses_val, ewma_metric_train, ewma_metric_val, is_classification)
+    make_train_plot(model_path, ewma_losses_train, ewma_losses_val, ewma_metric_train, ewma_metric_val, args.is_classification)

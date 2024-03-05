@@ -5,13 +5,13 @@ import os
 
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 # from torch_geometric.loader import DataLoader # This does not allow you to override the collate_fn
 
-from arterial_maps.dataloading.dataset import ArterialMapsDataset
-from arterial_maps.dataloading.utils import load_pickle
+from arterial_net.dataloading.dataset import ArterialMapsDataset
+from arterial_net.dataloading.utils import load_pickle
 
-def get_data_loaders(root, args, fold = None, pre_transform = None, train_transform = None, test_transform = None):
+def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=None, test_transform=None):
     """
     Define train, validation and test data loaders for the dataset.
 
@@ -32,8 +32,32 @@ def get_data_loaders(root, args, fold = None, pre_transform = None, train_transf
 
     Returns
     -------
-    t
+    train_loader : torch_geometric.loader.DataLoader
+        Training data loader.
+    val_loader : torch_geometric.loader.DataLoader
+        Validation data loader.
+    test_loader : torch_geometric.loader.DataLoader
+        Testing data loader.
+
     """
+    def compute_class_weights(y):
+        """
+        Compute class weights for a given list of classes.
+
+        Parameters
+        ----------
+        y : list
+            List of classes.
+
+        Returns
+        -------
+        class_weights : list
+            List of class weights.
+
+        """
+        class_counts = [y.count(i) for i in range(max(y) + 1)]
+        class_weights = [max(class_counts) / count for count in class_counts]
+        return class_weights
     # Define datasets . First make division of train + val and test
     dataset_filenames = [f for f in os.listdir(os.path.join(root, "raw")) if f.endswith(".pickle")]
     y_class = [load_pickle(os.path.join(root, "raw", f))["classification"] for f in dataset_filenames]
@@ -44,9 +68,10 @@ def get_data_loaders(root, args, fold = None, pre_transform = None, train_transf
             kf = StratifiedKFold(n_splits = args.folds, shuffle = True, random_state = args.random_state)
             folds = list(kf.split(train_val_filenames, y_train_val))
             train_filenames = [train_val_filenames[i] for i in folds[fold][0]]
-            val_filenames = [train_val_filenames[i] for i in folds[fold][1]]    
+            val_filenames = [train_val_filenames[i] for i in folds[fold][1]]  
+            y_train = [y_train_val[i] for i in folds[fold][0]]  
         else:
-            train_filenames, val_filenames = train_test_split(train_val_filenames, test_size = args.val_size, random_state = args.random_state, stratify=y_train_val)
+            train_filenames, val_filenames, y_train, y_val = train_test_split(train_val_filenames, y_train_val, test_size = args.val_size, random_state = args.random_state, stratify=y_train_val)
         # Now define dataset classes
         train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform)
         val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform)
@@ -65,8 +90,21 @@ def get_data_loaders(root, args, fold = None, pre_transform = None, train_transf
     print("Number of validation samples:   {} ({:.2f}%)".format(len(val_dataset), 100 * len(val_dataset) / len(dataset_filenames)))
     print("Number of testing samples:      {} ({:.2f}%)\n".format(len(test_dataset), 100 * len(test_dataset) / len(dataset_filenames)))
 
+    # Apply oversampling if enabled
+    if args.oversampling:
+        # Calculate class weights for all training samples
+        class_weights = compute_class_weights(y_train)
+        sample_weights = [class_weights[y] for y in y_train]  # Assign each sample its class's weight
+        # Divide by 2 the weights of the classes that are not the majority class
+        # sample_weights = [weight / 2 if y > 0.5 else weight for y, weight in zip(y_train, sample_weights)]
+        sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+
     # Define loaders
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
+    if args.oversampling:
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=custom_collate_fn, sampler=sampler)
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
+
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
 
