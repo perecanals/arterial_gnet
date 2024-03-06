@@ -62,16 +62,17 @@ def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=
     dataset_filenames = [f for f in os.listdir(os.path.join(root, "raw")) if f.endswith(".pickle")]
     y_class = [load_pickle(os.path.join(root, "raw", f))["classification"] for f in dataset_filenames]
     if not args.test_size == args.val_size == 0:
-        train_val_filenames, test_filenames, y_train_val, y_test = train_test_split(dataset_filenames, y_class, test_size = args.test_size, random_state = args.random_state, stratify = y_class)
+        train_val_filenames, test_filenames, y_class_train_val, y_class_test = train_test_split(dataset_filenames, y_class, test_size = args.test_size, random_state = args.random_state, stratify = y_class)
         # Now, depending on the folds being specified or not, perform cross validation (select the k-fold corresponding to "fold", with k being "args.folds") or not
         if fold is not None:
             kf = StratifiedKFold(n_splits = args.folds, shuffle = True, random_state = args.random_state)
-            folds = list(kf.split(train_val_filenames, y_train_val))
+            folds = list(kf.split(train_val_filenames, y_class_train_val))
             train_filenames = [train_val_filenames[i] for i in folds[fold][0]]
             val_filenames = [train_val_filenames[i] for i in folds[fold][1]]  
-            y_train = [y_train_val[i] for i in folds[fold][0]]  
+            y_class_train = [y_class_train_val[i] for i in folds[fold][0]]  
+            y_class_val = [y_class_train_val[i] for i in folds[fold][1]]
         else:
-            train_filenames, val_filenames, y_train, y_val = train_test_split(train_val_filenames, y_train_val, test_size = args.val_size, random_state = args.random_state, stratify=y_train_val)
+            train_filenames, val_filenames, y_class_train, y_class_val = train_test_split(train_val_filenames, y_class_train_val, test_size = args.val_size, random_state = args.random_state, stratify=y_class_train_val)
         # Now define dataset classes
         train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform)
         val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform)
@@ -93,19 +94,26 @@ def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=
     # Apply oversampling if enabled
     if args.oversampling:
         # Calculate class weights for all training samples
-        class_weights = compute_class_weights(y_train)
-        sample_weights = [class_weights[y] for y in y_train]  # Assign each sample its class's weight
+        class_weights_train = compute_class_weights(y_class_train)
+        sample_weights_train = [class_weights_train[y] for y in y_class_train]  # Assign each sample its class's weight
         # Divide by 2 the weights of the classes that are not the majority class
-        # sample_weights = [weight / 2 if y > 0.5 else weight for y, weight in zip(y_train, sample_weights)]
-        sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+        sample_weights_train = [weight / 2 if y > 0.5 else weight for y, weight in zip(y_class_train, sample_weights_train)]
+        sampler_train = WeightedRandomSampler(sample_weights_train, len(sample_weights_train))
+        # Repeat for validation
+        class_weights_val = compute_class_weights(y_class_val)
+        sample_weights_val = [class_weights_val[y] for y in y_class_val]
+        # Divide by 2 the weights of the classes that are not the majority class
+        sample_weights_val = [weight / 2 if y > 0.5 else weight for y, weight in zip(y_class_val, sample_weights_val)]
+        sampler_val = WeightedRandomSampler(sample_weights_val, len(sample_weights_val))
 
     # Define loaders
     if args.oversampling:
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=custom_collate_fn, sampler=sampler)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=custom_collate_fn, sampler=sampler_train)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, collate_fn=custom_collate_fn, sampler=sampler_val)
     else:
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
 
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
 
     return train_loader, val_loader, test_loader

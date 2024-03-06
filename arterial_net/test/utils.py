@@ -28,7 +28,7 @@ def draw_roc(preds, labels, class_labels, output_path=None):
     """
     # Build dataframe
     df = pd.DataFrame({"predictions": preds, "labels": labels, "class": class_labels})
-    df["class"] = np.where(df["class"] > 0.5, 1, 0) # Binarize class labels
+    df["class"] = np.where(df["class"] > 1.5, 1, 0) # Binarize class labels
 
     # Draw ROC
     _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi = 1000)
@@ -75,22 +75,13 @@ def draw_regression_plot(preds, labels, class_labels, optimal_threshold=None, ou
     ax.grid(alpha=0.5, lw=0.5)
     plt.rcParams.update({'font.size': 14})
 
-    scatter = sns.scatterplot(data=df, x="Labels", y="Predictions", hue="Class", palette=["forestgreen", "orange", "crimson"], alpha=0.2, s = 1, ax = ax)
-    for i in range(len(df)):
-        ax.errorbar(df["Labels"][i], 
-            df["Predictions"][i], 
-            fmt='o', 
-            color=scatter.get_legend().legendHandles[df["Class"][i].astype(int)].get_facecolor(), 
-            capsize=2, 
-            linewidth=0.5, 
-            alpha=0.6, 
-            markeredgewidth=0, 
-            markersize=4)
+    sns.scatterplot(data=df, x="Labels", y="Predictions", hue="Class", palette=["forestgreen", "orange", "crimson"], alpha=0.6, s = 40, ax = ax)
+    
     if optimal_threshold is not None:
-        # Fill the area between the error bands
         x_min, x_max = ax.get_xlim()
         ax.axhline(y = np.mean(optimal_threshold), color = 'mediumblue', linestyle = '-', lw = 1, label = "Optimal threshold")
         ax.set_xlim([x_min, x_max])
+
     ax.set_xlabel("True T1A (min)")
     ax.set_ylabel("Predicted value")
     handles, labels = ax.get_legend_handles_labels()
@@ -148,7 +139,7 @@ def draw_probability_distribution(preds, labels, threshold, output_path=None):
     if output_path is not None:
         plt.savefig(output_path, dpi=1000)
 
-def compute_interpolated_roc_curve(preds, labels, n_points=100):
+def compute_interpolated_roc_curve(preds, labels, n_points=100, threshold_label=0.5):
     """
     Compute an interpolated ROC curve.
 
@@ -160,6 +151,8 @@ def compute_interpolated_roc_curve(preds, labels, n_points=100):
         Labels.
     n_points : int
         Number of points to interpolate. Default is 100.
+    threshold_label : float
+        Threshold for classification. Default is 0.5.
 
     Returns
     -------
@@ -170,6 +163,7 @@ def compute_interpolated_roc_curve(preds, labels, n_points=100):
     thresholds : list
         Thresholds.
     """
+    labels = np.array(labels) >= threshold_label
     fpr, tpr, thresholds = roc_curve(labels, preds)
     auc_score = auc(fpr, tpr)
 

@@ -68,6 +68,10 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         optimizer.zero_grad() 
         # Perform forward pass with batch
         out = model(batch.to(device)).to(device)
+        out = torch.squeeze(out)
+        # Raise error if nan in out
+        if torch.isnan(out).any():
+            raise ValueError("NaN in output.")
         # Compute loss
         if args.is_classification:
             loss = loss_function(out, batch.y_class)
@@ -111,6 +115,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         with torch.no_grad():
             # Perform forward pass with batch
             out = model(batch.to(device)).to(device)
+            out = torch.squeeze(out)
             # Compute validation loss
             if args.is_classification:
                 loss = loss_function(out, batch.y_class)
@@ -237,11 +242,19 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         ewma_metric_val.append(0.9 * ewma_metric_val[-1] + 0.1 * metric_val_epoch if len(ewma_metric_val) > 0 else metric_val_epoch)
 
         # Saves best model in terms of validation loss
-        if total_epoch_loss_val == np.amin(ewma_losses_val):
-            torch.save(model, os.path.join(model_path, "model_best.pth"))
+        if ewma_losses_val[-1] == np.amin(ewma_losses_val):
+            # print(f"New best model in epoch {epoch} (validation loss: {total_epoch_loss_val:.2f}). Saving model...")
+            # print(f"\t{os.path.join(model_path, "model_best_loss.pth")}\n")
+            torch.save(model, os.path.join(model_path, "model_best_loss.pth"))
         # Saves best model in terms of validation accuracy
-        if metric_val_epoch == np.max(ewma_metric_val):
-            torch.save(model, os.path.join(model_path, "model_best_acc.pth"))
+        elif ewma_metric_val[-1] == np.max(ewma_metric_val) and args.is_classification:
+            # print(f"New best model in epoch {epoch} (validation accuracy: {metric_val_epoch:.2f}). Saving model...")
+            # print(f"\t{os.path.join(model_path, "model_best_metric.pth")}\n")
+            torch.save(model, os.path.join(model_path, "model_best_metric.pth"))
+        elif ewma_metric_val[-1] == np.min(ewma_metric_val) and not args.is_classification:
+            # print(f"New best model in epoch {epoch} (validation rmse: {metric_val_epoch:.2f}). Saving model...")
+            # print(f"\t{os.path.join(model_path, "model_best_metric.pth")}\n")
+            torch.save(model, os.path.join(model_path, "model_best_metric.pth"))
 
         # Updates learning rate policy if scheduler is used
         if args.lr_scheduler is not None:
@@ -254,6 +267,8 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
 
         # Prints checkpoint every 100 epochs
         if epoch % 100 == 0:
+            torch.save(model, os.path.join(model_path, f"model_{epoch}_epochs.pth"))
+            torch.save(model, os.path.join(model_path, f"model_latest.pth"))
             if fold is not None:
                 print(f"Epoch: {epoch:04d} (model {model_name}, fold {fold})")
             else:

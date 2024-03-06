@@ -126,6 +126,7 @@ class ArterialNet(nn.Module):
         if is_classification:
             self.output_layer = nn.Sequential(
                 nn.Linear(hidden_dim * sum([num_global_layers > 0, num_segment_layers > 0, num_dense_layers > 0]), out_dim),
+                # nn.Dropout(p=dropout),
                 nn.Softmax(dim=1)
             )
             # self.output_layer = nn.Sequential(

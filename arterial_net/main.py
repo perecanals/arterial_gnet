@@ -47,7 +47,7 @@ def main(root, args):
                     elif args.class_loss == "nll":
                         loss_function = NLLLoss()
             else:
-                if args.weighted_loss is None:
+                if args.weighted_loss is None or args.oversampling:
                     loss_function = MSELoss()
                 elif args.weighted_loss == "lin":
                     loss_function = LinearWeightedMSELoss()
@@ -70,15 +70,17 @@ def main(root, args):
 
         if args.test:
             # Run testing
-            run_testing(
-                root,
-                model_name,
-                test_loader,
-                model = None,
-                device = device,
-                fold = fold,
-                is_classification = args.is_classification
-            )
+            # for model_test in ["best", "latest", "metric"]:
+            for model_test in ["best"]:
+                run_testing(
+                    root,
+                    model_name,
+                    test_loader,
+                    model = model_test,
+                    device = device,
+                    fold = fold,
+                    is_classification = args.is_classification
+                )
 
 if __name__ == "__main__":
     import os, sys
