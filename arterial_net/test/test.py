@@ -128,18 +128,18 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
         np.savetxt(os.path.join(test_dir, "rmse_mean.out"), [np.mean(metric_test), np.std(metric_test)])
 
     # Draw ROC curve
-    roc_auc, optimal_threshold = draw_roc(preds, labels, class_labels, os.path.join(test_dir, "roc.png"))
+    roc_auc, optimal_threshold = draw_roc(preds, labels, class_labels, os.path.join(test_dir, f"roc_{test_dir_suffix}.png"))
     if is_classification:
         # Draw probability distribution
-        draw_probability_distribution(preds, class_labels, optimal_threshold, os.path.join(test_dir, "probability_distribution.png"))
+        draw_probability_distribution(preds, class_labels, optimal_threshold, os.path.join(test_dir, f"probability_distribution_{test_dir_suffix}.png"))
     else:
         # Draw regression plot 
-        draw_regression_plot(preds, labels, class_labels, optimal_threshold, os.path.join(test_dir, "regression_plot.png"))
-    
-    accuracy, precision, sensitivity, specificity, f1, weighted_f1, mcc = compute_classification_metrics(preds, class_labels, optimal_threshold, threshold_label=1.5)
+        draw_regression_plot(preds, labels, class_labels, optimal_threshold, os.path.join(test_dir, f"regression_plot_{test_dir_suffix}.png"))
+
+    accuracy, precision, sensitivity, specificity, f1, weighted_f1, mcc = compute_classification_metrics(preds, class_labels, optimal_threshold, threshold_label=0.5)
 
     # Print testing metrics
-    print("------------------------------------------------ Testing metrics")
+    print(f"------------------------------------------------ Testing metrics {test_dir_suffix}")
     print(f"ROC AUC:           {roc_auc:.2f}")
     print(f"Optimal threshold: {optimal_threshold:.2f}")
     print(f"Accuracy:          {accuracy:.2f}")
@@ -190,7 +190,7 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
         results_folds[fold]["class_labels"] = np.array([np.load(os.path.join(model_dir, f"fold_{fold}", test_dir_suffix, "class_labels", graph))[0] for graph in sorted(os.listdir(os.path.join(model_dir, f"fold_{fold}", test_dir_suffix, "class_labels")))])
 
         # Compute ROC curve and interpolate in 100 points to draw tpr and fpr
-        auc_score, fpr, tpr, thresholds_, fpr_interp, tpr_interp, thresholds_interp, optimal_threshold = compute_interpolated_roc_curve(results_folds[fold]["preds"], results_folds[fold]["class_labels"], n_points=n_points, threshold_label=1.5)
+        auc_score, fpr, tpr, thresholds_, fpr_interp, tpr_interp, thresholds_interp, optimal_threshold = compute_interpolated_roc_curve(results_folds[fold]["preds"], results_folds[fold]["class_labels"], n_points=n_points, threshold_label=0.5)
         results_folds[fold]["auc"] = auc_score
         results_folds[fold]["fpr"] = fpr
         results_folds[fold]["tpr"] = tpr
@@ -201,7 +201,7 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
         results_folds[fold]["optimal_threshold"] = optimal_threshold
 
         # Compute metrics
-        accuracy, precision, sensitivity, specificity, f1, weighted_f1, mcc = compute_classification_metrics(results_folds[fold]["preds"], results_folds[fold]["class_labels"], optimal_threshold, threshold_label=1.5)
+        accuracy, precision, sensitivity, specificity, f1, weighted_f1, mcc = compute_classification_metrics(results_folds[fold]["preds"], results_folds[fold]["class_labels"], optimal_threshold, threshold_label=0.5)
 
         aucs.append(auc_score)
         thresholds.append(optimal_threshold)
@@ -222,11 +222,11 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
         results_folds[fold]["mcc"] = mcc
 
     # Draw ROC curve over folds
-    draw_roc_folds(results_folds, n_points=n_points, output_path=os.path.join(model_dir, "roc_folds.png"))
+    draw_roc_folds(results_folds, n_points=n_points, output_path=os.path.join(model_dir, f"roc_folds_{test_dir_suffix}.png"))
 
     if len(aucs) > 1:
         # Print final results
-        print("------------------------------------------------ Final results")
+        print(f"------------------------------------------------ Final results ({test_dir_suffix})")
         print(f"ROC AUC:     {np.mean(aucs):.2f} ({np.mean(aucs) - 1.96 * np.std(aucs) / np.sqrt(len(aucs)):.2f} - {np.mean(aucs) + 1.96 * np.std(aucs) / np.sqrt(len(aucs)):.2f})")
         print(f"Threshold:   {np.mean(thresholds):.2f} ({np.mean(thresholds) - 1.96 * np.std(thresholds) / np.sqrt(len(thresholds)):.2f} - {np.mean(thresholds) + 1.96 * np.std(thresholds) / np.sqrt(len(thresholds)):.2f})")
         print(f"Accuracy:    {np.mean(accuracies):.2f} ({np.mean(accuracies) - 1.96 * np.std(accuracies) / np.sqrt(len(accuracies)):.2f} - {np.mean(accuracies) + 1.96 * np.std(accuracies) / np.sqrt(len(accuracies)):.2f})")

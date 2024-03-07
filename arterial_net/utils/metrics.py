@@ -30,5 +30,4 @@ def compute_classification_metrics(preds, class_labels, threshold=0.5, threshold
     # Make confusion matrix plot
     # plt.figure(figsize=(5, 5))
 
-
     return accuracy, precision, sensitivity, specificity, f1, weighted_f1, mcc

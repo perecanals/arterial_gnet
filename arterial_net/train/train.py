@@ -242,18 +242,22 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         ewma_metric_val.append(0.9 * ewma_metric_val[-1] + 0.1 * metric_val_epoch if len(ewma_metric_val) > 0 else metric_val_epoch)
 
         # Saves best model in terms of validation loss
-        if ewma_losses_val[-1] == np.amin(ewma_losses_val):
-            # print(f"New best model in epoch {epoch} (validation loss: {total_epoch_loss_val:.2f}). Saving model...")
-            # print(f"\t{os.path.join(model_path, "model_best_loss.pth")}\n")
+        if epoch > 0:
+            if ewma_losses_val[-1] < np.amin(ewma_losses_val[:-1]):
+                # print(f"New best model in epoch {epoch} (validation loss: {total_epoch_loss_val:.2f}). Saving model...")
+                # print(f"\t{os.path.join(model_path, "model_best_loss.pth")}\n")
+                torch.save(model, os.path.join(model_path, "model_best_loss.pth"))
+            # Saves best model in terms of validation accuracy
+            elif ewma_metric_val[-1] > np.max(ewma_metric_val[:-1]) and args.is_classification:
+                # print(f"New best model in epoch {epoch} (validation accuracy: {metric_val_epoch:.2f}). Saving model...")
+                # print(f"\t{os.path.join(model_path, "model_best_metric.pth")}\n")
+                torch.save(model, os.path.join(model_path, "model_best_metric.pth"))
+            elif ewma_metric_val[-1] < np.min(ewma_metric_val[:-1]) and not args.is_classification:
+                # print(f"New best model in epoch {epoch} (validation rmse: {metric_val_epoch:.2f}). Saving model...")
+                # print(f"\t{os.path.join(model_path, "model_best_metric.pth")}\n")
+                torch.save(model, os.path.join(model_path, "model_best_metric.pth"))
+        else:
             torch.save(model, os.path.join(model_path, "model_best_loss.pth"))
-        # Saves best model in terms of validation accuracy
-        elif ewma_metric_val[-1] == np.max(ewma_metric_val) and args.is_classification:
-            # print(f"New best model in epoch {epoch} (validation accuracy: {metric_val_epoch:.2f}). Saving model...")
-            # print(f"\t{os.path.join(model_path, "model_best_metric.pth")}\n")
-            torch.save(model, os.path.join(model_path, "model_best_metric.pth"))
-        elif ewma_metric_val[-1] == np.min(ewma_metric_val) and not args.is_classification:
-            # print(f"New best model in epoch {epoch} (validation rmse: {metric_val_epoch:.2f}). Saving model...")
-            # print(f"\t{os.path.join(model_path, "model_best_metric.pth")}\n")
             torch.save(model, os.path.join(model_path, "model_best_metric.pth"))
 
         # Updates learning rate policy if scheduler is used

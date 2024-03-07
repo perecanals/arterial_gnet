@@ -28,7 +28,7 @@ def draw_roc(preds, labels, class_labels, output_path=None):
     """
     # Build dataframe
     df = pd.DataFrame({"predictions": preds, "labels": labels, "class": class_labels})
-    df["class"] = np.where(df["class"] > 1.5, 1, 0) # Binarize class labels
+    df["class"] = np.where(df["class"] > 0.5, 1, 0) # Binarize class labels
 
     # Draw ROC
     _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi = 1000)
@@ -44,7 +44,7 @@ def draw_roc(preds, labels, class_labels, output_path=None):
     plt.tight_layout()
     if output_path is not None:
         plt.savefig(output_path, dpi = 1000)
-        df.to_excel(output_path.replace("roc.png", "roc.xlsx"), index = False)
+        df.to_excel(output_path.replace(".png", ".xlsx"), index = False)
 
     # Compute optimal threshold, maximum Youden index
     optimal_threshold = thresholds[np.argmax(tpr - fpr)]
@@ -109,10 +109,10 @@ def draw_probability_distribution(preds, labels, threshold, output_path=None):
     df = pd.DataFrame({"predictions": preds, "labels": labels})
 
     # Identify tp, tn, fp, fn based on predictions, labels, and threshold
-    df["tp"] = np.where((df["predictions"] > threshold) & (df["labels"] == 1), True, False)
-    df["tn"] = np.where((df["predictions"] <= threshold) & (df["labels"] == 0), True, False)
-    df["fp"] = np.where((df["predictions"] > threshold) & (df["labels"] == 0), True, False)
-    df["fn"] = np.where((df["predictions"] <= threshold) & (df["labels"] == 1), True, False)
+    df["tp"] = np.where((df["predictions"] >= threshold) & (df["labels"] == 1), True, False)
+    df["tn"] = np.where((df["predictions"] < threshold) & (df["labels"] == 0), True, False)
+    df["fp"] = np.where((df["predictions"] >= threshold) & (df["labels"] == 0), True, False)
+    df["fn"] = np.where((df["predictions"] < threshold) & (df["labels"] == 1), True, False)
 
     # Plot setup
     _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi=1000)
@@ -224,3 +224,19 @@ def draw_roc_folds(results_folds, n_points=100, output_path=None):
 
     if output_path is not None:
         plt.savefig(output_path, dpi = 1000)
+
+    results = {
+        "mean_fpr": mean_fpr_interp.tolist(),
+        "mean_tpr": mean_tpr.tolist(),
+        "std_tpr": std_tpr.tolist(),
+        "mean_auc": float(np.mean(aucs)),
+        "std_auc": float(np.std(aucs)),
+        "tprs_upper": tprs_upper.tolist(),
+        "tprs_lower": tprs_lower.tolist(),
+        "optimal_tpr": 0,
+        "optimal_fpr": 0,
+        "optimal_sensitivity": 0,
+        "optimal_specificity": 0
+    }
+
+    return results
