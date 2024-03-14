@@ -1,4 +1,4 @@
-import os, pickle
+import os, pickle, json
 
 import numpy as np
 
@@ -222,7 +222,7 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
         results_folds[fold]["mcc"] = mcc
 
     # Draw ROC curve over folds
-    draw_roc_folds(results_folds, n_points=n_points, output_path=os.path.join(model_dir, f"roc_folds_{test_dir_suffix}.png"))
+    roc_results = draw_roc_folds(results_folds, n_points=n_points, output_path=os.path.join(model_dir, f"roc_folds_{test_dir_suffix}.png"))
 
     if len(aucs) > 1:
         # Print final results
@@ -240,3 +240,5 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
 
     with open(os.path.join(model_dir, "results_folds.pickle"), "wb") as f:
         pickle.dump(results_folds, f)
+    with open(os.path.join(model_dir, "roc_results.json"), "w") as f:
+        json.dump(roc_results, f)
