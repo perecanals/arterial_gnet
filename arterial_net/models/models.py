@@ -36,9 +36,9 @@ def get_model(args, dataset_description, device = "cpu"):
         String with the model name, where data (train and test) will be 
         in os.path.join(root, "models", model_name).
     """
-    model_name = "{}_bs-{}_te-{}_hc-{}_hcd-{}_op-{}_lr-{}_lrs-{}_ngl-{}_nsl-{}_ndl-{}_agg-{}_drop-{}_wl-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+    model_name = "{}_bs-{}_te-{}_hc-{}_hcd-{}_op-{}_lr-{}_lrs-{}_ngl-{}_nsl-{}_ndl-{}_nol-{}_agg-{}_drop-{}_wl-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
                                                                            args.total_epochs, args.hidden_channels, args.hidden_channels_dense, args.optimizer, args.learning_rate, args.lr_scheduler, \
-                                                                           args.num_global_layers, args.num_segment_layers, args.num_dense_layers, args.aggregation, \
+                                                                           args.num_global_layers, args.num_segment_layers, args.num_dense_layers, args.num_out_layers, args.aggregation, \
                                                                                 args.dropout, args.weighted_loss, args.oversampling, args.random_state, args.test_random_state)
     if args.is_classification:
         model_name += "_class"
@@ -52,13 +52,14 @@ def get_model(args, dataset_description, device = "cpu"):
     print(f"Number of global layers:        {args.num_global_layers}")
     print(f"Number of segment layers:       {args.num_segment_layers}")
     print(f"Number of dense layers:         {args.num_dense_layers}")
+    print(f"Number of output layers:        {args.num_out_layers}")
     print(f"Aggregation method:             {args.aggregation}")
     print(f"Dropout:                        {args.dropout}")
     print(f"Oversampling:                   {args.oversampling}")
 
     # Initialize model with the corresponding parameters
-    if args.base_model_name == "ArterialNet":
-        model = ArterialNet(
+    if args.base_model_name == "ArterialGNet":
+        model = ArterialGNet(
             global_in_dim=dataset_description["num_global_features"], 
             segment_node_in_dim=dataset_description["num_segment_node_features"], 
             segment_edge_in_dim=dataset_description["num_segment_edge_features"],
@@ -69,6 +70,7 @@ def get_model(args, dataset_description, device = "cpu"):
             num_global_layers=args.num_global_layers,
             num_segment_layers=args.num_segment_layers, 
             num_dense_layers=args.num_dense_layers,
+            num_out_layers=args.num_out_layers,
             aggregation=args.aggregation,
             dropout=args.dropout,
             is_classification=args.is_classification
@@ -94,23 +96,42 @@ class GATv2Layer(nn.Module):
         x = self.dropout(x)
         return x
 
-class ArterialNet(nn.Module):
+class MLPLayer(nn.Module):
+    def __init__(self, in_channels, out_channels, dropout_rate=0.2):
+        super(MLPLayer, self).__init__()
+        self.linear = nn.Linear(in_channels, out_channels)
+        self.bn = BatchNorm(out_channels)
+        self.dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, x):
+        x = self.linear(x)
+        x = F.leaky_relu(x, negative_slope=0.2)
+        x = self.bn(x)
+        x = self.dropout(x)
+        return x
+
+class ArterialGNet(nn.Module):
+    """
+    ArterialGNet.
+    
+    """
     def __init__(
             self,
             global_in_dim,
             segment_node_in_dim,
             segment_edge_in_dim,
             dense_node_in_dim,
-            hidden_dim,
-            hidden_dim_dense,
-            out_dim,
-            num_global_layers,
-            num_segment_layers,
-            num_dense_layers,
-            aggregation="max",
+            hidden_dim=8,
+            hidden_dim_dense=8,
+            out_dim=2,
+            num_global_layers=1,
+            num_segment_layers=1,
+            num_dense_layers=1,
+            num_out_layers=1,
+            aggregation="mean",
             dropout=0.2,
-            is_classification=False):
-        super(ArterialNet, self).__init__()
+            is_classification=True):
+        super(ArterialGNet, self).__init__()
         self.global_in_dim = global_in_dim
         self.segment_node_in_dim = segment_node_in_dim
         self.segment_edge_in_dim = segment_edge_in_dim
@@ -121,6 +142,7 @@ class ArterialNet(nn.Module):
         self.num_global_layers = num_global_layers
         self.num_segment_layers = num_segment_layers
         self.num_dense_layers = num_dense_layers
+        self.num_out_layers = num_out_layers
         self.aggregation_ = aggregation 
         self.dropout = dropout
         self.is_classification = is_classification
@@ -128,56 +150,41 @@ class ArterialNet(nn.Module):
         if self.num_global_layers > 0:
             self.global_path = torch.nn.ModuleList()
             for idx in range(self.num_global_layers):
-                linear = nn.Sequential(
-                    nn.Linear(self.global_in_dim if idx == 0 else self.hidden_dim, self.hidden_dim),
-                    nn.LeakyReLU(negative_slope=0.2),
-                    nn.BatchNorm1d(self.hidden_dim),
-                    nn.Dropout(p=self.dropout)
-                )
-                self.global_path.append(linear)
+                self.global_path.append(MLPLayer(self.global_in_dim if idx == 0 else self.hidden_dim, self.hidden_dim, dropout_rate=self.dropout))
         else:
             self.global_path = None
+        
         if self.num_segment_layers > 0:
             self.segment_path = torch.nn.ModuleList()
             for idx in range(self.num_segment_layers):
                 self.segment_path.append(GATv2Layer(self.segment_node_in_dim if idx == 0 else self.hidden_dim, self.hidden_dim, edge_dim=self.segment_edge_in_dim, dropout_rate=self.dropout))
         else:
             self.segment_path = None
+        
         if self.num_dense_layers > 0:
             self.dense_path = torch.nn.ModuleList()
             for idx in range(self.num_dense_layers):
                 self.dense_path.append(GATv2Layer(self.dense_node_in_dim if idx == 0 else self.hidden_dim_dense, self.hidden_dim_dense, dropout_rate=self.dropout))
         else:
             self.dense_path = None
-        if self.is_classification:
-            self.output_layer = nn.Sequential(
-                nn.Linear(self.hidden_dim * sum([self.num_global_layers > 0, self.num_segment_layers > 0]) + self.hidden_dim_dense * sum([self.num_dense_layers > 0]), self.out_dim),
-                # nn.Dropout(p=self.dropout),
-                nn.Softmax(dim=1)
-            )
-            # self.output_layer = nn.Sequential(
-            #     nn.Linear(self.hidden_dim * sum([self.num_global_layers > 0, self.num_segment_layers > 0, self.num_dense_layers > 0]), self.hidden_dim),
-            #     nn.LeakyReLU(negative_slope=0.2),
-            #     nn.Dropout(p=self.dropout),
-            #     nn.Linear(self.hidden_dim, self.out_dim),
-            #     nn.Softmax(dim=1)
-            # )
+        
+        self.output_path = torch.nn.ModuleList()
+        if self.num_out_layers > 1:
+            for idx in range(num_out_layers - 1):
+                self.output_path.append(MLPLayer(self.hidden_dim * sum([self.num_global_layers > 0, self.num_segment_layers > 0]) + self.hidden_dim_dense * sum([self.num_dense_layers > 0]) if idx == 0 else hidden_dim, self.hidden_dim, dropout_rate=self.dropout))
+            self.output_path.append(nn.Linear(self.hidden_dir, self.out_dim))
         else:
-            self.output_layer = nn.Linear(self.hidden_dim * sum([self.num_global_layers > 0, self.num_segment_layers > 0, self.num_dense_layers > 0]), self.out_dim)
-            # self.output_layer = nn.Sequential(
-            #     nn.Linear(self.hidden_dim * sum([self.num_global_layers > 0, self.num_segment_layers > 0, self.num_dense_layers > 0]), self.hidden_dim),
-            #     nn.LeakyReLU(negative_slope=0.2),
-            #     nn.Dropout(p=self.dropout),
-            #     nn.Linear(self.hidden_dim, self.out_dim)
-            # )
+            self.output_path.append(nn.Linear(self.hidden_dim * sum([self.num_global_layers > 0, self.num_segment_layers > 0]) + self.hidden_dim_dense * sum([self.num_dense_layers > 0]), self.out_dim))
+        if self.is_classification:
+            self.output_path.append(nn.Softmax(dim=1))
 
-        if aggregation == "add":
-            self.aggregation = global_add_pool
-        elif aggregation == "mean":
+        if self.aggregation_ == "mean":
             self.aggregation = global_mean_pool
-        elif aggregation == "max":
+        elif self.aggregation_ == "max":
             self.aggregation = global_max_pool
-        # elif aggregation == "topk":
+        elif self.aggregation_ == "add":
+            self.aggregation = global_add_pool
+        # elif self.aggregation_ == "topk":
         #     self.aggregation = TopKPooling(self.hidden_dim, ratio=0.5)
 
     def forward(self, data):
@@ -210,8 +217,10 @@ class ArterialNet(nn.Module):
             dense_x = None
 
         # Concatenate all features
-        total_features = torch.cat([x for x in [global_features, segment_x, dense_x] if x is not None], dim=1)
+        out = torch.cat([x for x in [global_features, segment_x, dense_x] if x is not None], dim=1)
 
-        # Regression
-        out = self.output_layer(total_features)
+        # Final output layers
+        for layer in self.output_path:
+            out = layer(out)
+
         return out

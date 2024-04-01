@@ -238,7 +238,7 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
         print(f"MCC:         {np.mean(mccs):.2f} ({np.mean(mccs) - 1.96 * np.std(mccs) / np.sqrt(len(mccs)):.2f} - {np.mean(mccs) + 1.96 * np.std(mccs) / np.sqrt(len(mccs)):.2f})")
         print()
 
-    with open(os.path.join(model_dir, "results_folds.pickle"), "wb") as f:
+    with open(os.path.join(model_dir, f"results_folds_{test_dir_suffix}.pickle"), "wb") as f:
         pickle.dump(results_folds, f)
-    with open(os.path.join(model_dir, "roc_results.json"), "w") as f:
+    with open(os.path.join(model_dir, f"roc_results_{test_dir_suffix}.json"), "w") as f:
         json.dump(roc_results, f)

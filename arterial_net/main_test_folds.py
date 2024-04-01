@@ -13,7 +13,7 @@ def main(root, args):
     import torch
 
     print("------------------------------------------------")
-    print("Running training and testing for ArterialNet\n")
+    print("Running training and testing for ArterialGNet\n")
 
     # Read device
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
@@ -107,34 +107,36 @@ if __name__ == "__main__":
     parser.add_argument('-vs', '--val_size', type=float, default=0.2,
         help='Dataset ratio for validation, with respect to the size of the training dataset (after subtracting testing set)'
         'It will be overrun if args.folds is not None (size will be (1 - test_size) / args.folds). Default is 0.2.')
-    parser.add_argument('-bs', '--batch_size', type=int, default=32, 
-        help='Batch size for training and validation. Default is 32.')
-    parser.add_argument('-bnm', '--base_model_name', type=str, default="ArterialNet", 
-        help='Base model name. Default is GraphRegressionModelv1.')
-    parser.add_argument('-hc', '--hidden_channels', type=int, default=32, 
-        help='Number of hidden channels. Default is 64.')
+    parser.add_argument('-bs', '--batch_size', type=int, default=64, 
+        help='Batch size for training and validation. Default is 64.')
+    parser.add_argument('-bnm', '--base_model_name', type=str, default="ArterialGNet", 
+        help='Base model name. Default is ArterialGNet.')
+    parser.add_argument('-hc', '--hidden_channels', type=int, default=8, 
+        help='Number of hidden channels. Default is 8.')
     parser.add_argument('-hcd', '--hidden_channels_dense', type=int, default=None, 
         help='Number of hidden channels of the dense layers. Default is None, which defaults to the number --hidden_channels.')
     parser.add_argument('-ngl', '--num_global_layers', type=int, default=1,
         help='Number of global layers. Default is 1.')
-    parser.add_argument('-nsl', '--num_segment_layers', type=int, default=2,
-        help='Number of segment layers. Default is 2.')
-    parser.add_argument('-ndl', '--num_dense_layers', type=int, default=2,
-        help='Number of dense layers. Default is 2.')
+    parser.add_argument('-nsl', '--num_segment_layers', type=int, default=1,
+        help='Number of segment layers. Default is 1.')
+    parser.add_argument('-ndl', '--num_dense_layers', type=int, default=1,
+        help='Number of dense layers. Default is 1.')
+    parser.add_argument('-nol', '--num_out_layers', type=int, default=1,
+        help='Number of output layers. Default is 1.')
     parser.add_argument('-te', '--total_epochs', type=int, default=500, 
         help='Total number of epochs. Default is 500.')
     parser.add_argument('-optim', '--optimizer', type=str, default="adam", choices=["adam", "sgd"],
         help='Optimizer. Default is adam.')
-    parser.add_argument('-lr', '--learning_rate', type=float, default=0.01, 
-        help='Initial learning rate. Default is 0.01.')
+    parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, 
+        help='Initial learning rate. Default is 0.001.')
     parser.add_argument('-lrs', '--lr_scheduler', type=str, default="poly", choices=['poly', 'plateau', 'None'],
         help='Learning rate scheduler. Default is True.')
     parser.add_argument('-agg', '--aggregation', type=str, default="mean", choices=["mean", "add", "max"],
         help='Aggregation method. Default is mean.')
     parser.add_argument('-wl', '--weighted_loss', type=str, default="exp", choices=['exp', "lin", "log", 'None'],
         help='Whether to use weighted loss and what type. Default is exp.')
-    parser.add_argument('-drop', '--dropout', type=float, default=0.2,
-        help='Dropout probability. Default is 0.2.')
+    parser.add_argument('-drop', '--dropout', type=float, default=0.8,
+        help='Dropout probability. Default is 0.8.')
     parser.add_argument('-rs', '--random_state', type=int, default=42,
         help='Random state for splitting the dataset. Default is 42.')
     parser.add_argument('-trs', '--test_random_state', type=int, default=42,
@@ -156,7 +158,7 @@ if __name__ == "__main__":
     parser.add_argument('-tag', '--tag', type=str, default=None,
         help='Additional tag to add to the model name for identification. Default is None.')
     parser.add_argument('-nw', '--num_workers', type=int, default=2,
-        help='Number of workers for the DataLoader (unused). Default is 2.')
+        help='Number of workers for the DataLoader (ATM unused). Default is 2.')
     parser.add_argument('-os', '--oversampling', type=str, default=False, choices=['True', 'False'],
         help='Whether to use oversampling. Default is False.')
 
