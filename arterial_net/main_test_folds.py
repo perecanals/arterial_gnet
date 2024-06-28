@@ -21,7 +21,8 @@ def main(root, args):
     if torch.cuda.is_available():
         device = "cuda"
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        device = "mps"
+        # device = "mps"
+        device = "cpu"
     print(f"Using device: {device}")
 
     #################################### Dataset organization ############################################
@@ -147,8 +148,8 @@ if __name__ == "__main__":
         help='Random state for splitting the dataset. Default is 42.')
     parser.add_argument('-trs', '--test_random_state', type=int, default=42,
         help='Random state for splitting the dataset for k-fold in test. Default is 42.')
-    parser.add_argument('-f', '--folds', type=int, default=None,
-        help='Folds number. Default is None.')
+    parser.add_argument('-f', '--folds', type=int, default=5,
+        help='Folds number. Default is 5.')
     parser.add_argument('-tf', '--test_folds', type=int, default=5,
         help='Folds number for test. Default is 5.')
     parser.add_argument('-sf', '--skip_folds', type=int, default=None,

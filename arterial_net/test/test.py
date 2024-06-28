@@ -2,7 +2,7 @@ import os, pickle, json
 
 import numpy as np
 
-from arterial_net.test.utils import draw_roc, draw_regression_plot, draw_probability_distribution, compute_interpolated_roc_curve, draw_roc_folds
+from arterial_net.test.utils import draw_roc, draw_pr_curve, draw_regression_plot, draw_probability_distribution, compute_interpolated_roc_curve, draw_roc_folds
 from arterial_net.utils.metrics import compute_accuracy, compute_rmse, compute_classification_metrics
 
 import torch
@@ -10,7 +10,7 @@ import torch
 def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=None, is_classification=False):
     """
     Performs testing of a model over a test set. If the model is not input, it loads the 
-    best model (model_best.pth) from the corresponding model dir.
+    best model (model_best.pth) from the corresponditestng model dir.
 
     Parameters
     ----------
@@ -129,6 +129,7 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
 
     # Draw ROC curve
     roc_auc, optimal_threshold = draw_roc(preds, labels, class_labels, os.path.join(test_dir, f"roc_{test_dir_suffix}.png"))
+    pr_auc = draw_pr_curve(preds, labels, class_labels, os.path.join(test_dir, f"roc_{test_dir_suffix}.png"))
     if is_classification:
         # Draw probability distribution
         draw_probability_distribution(preds, class_labels, optimal_threshold, os.path.join(test_dir, f"probability_distribution_{test_dir_suffix}.png"))
@@ -141,6 +142,7 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
     # Print testing metrics
     print(f"------------------------------------------------ Testing metrics {test_dir_suffix}")
     print(f"ROC AUC:           {roc_auc:.2f}")
+    print(f"PR AUC:            {pr_auc:.2f}")
     print(f"Optimal threshold: {optimal_threshold:.2f}")
     print(f"Accuracy:          {accuracy:.2f}")
     print(f"Precision:         {precision:.2f}")
