@@ -89,7 +89,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             optimizer.step()
             # Compute RMSE for training
             metric = compute_rmse(out, batch.y)
-        return loss, metric
+        return loss, metric, out
 
     def val_step(model, batch):
         """
@@ -187,27 +187,28 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
     ewma_metric_train = []
     ewma_metric_val = []
 
-    if args.is_classification:
-        roc_auc_train = []
-        pr_auc_train = []
-        roc_auc_val = []
-        pr_auc_val = []
-        ewma_roc_auc_train = []
-        ewma_pr_auc_train = []
-        ewma_roc_auc_val = []
-        ewma_pr_auc_val = []
+    # if args.is_classification:
+    #     roc_auc_train = []
+    #     pr_auc_train = []
+    #     roc_auc_val = []
+    #     pr_auc_val = []
+    #     ewma_roc_auc_train = []
+    #     ewma_pr_auc_train = []
+    #     ewma_roc_auc_val = []
+    #     ewma_pr_auc_val = []
 
     # Starts training
     for epoch in range(0, args.total_epochs + 1):
         print("Epoch: {}/{}".format(epoch, args.total_epochs), end="\r")
         # Initializes in-epoch variables
         total_epoch_loss_train, total_epoch_loss_val = 0, 0
-        preds_train, preds_val = [], []
-        labels_train, labels_val = [], []
         metric_train_epoch_list, metric_val_epoch_list = [], []
-        roc_auc_train_epoch_list, roc_auc_val_epoch_list = [], []
-        pr_auc_train_epoch_list, pr_auc_val_epoch_list = [], []
         num_graphs_train, num_graphs_val = 0, 0
+        # if args.is_classification:
+        #     preds_train, preds_val = [], []
+        #     labels_train, labels_val = [], []
+        #     roc_auc_train_epoch_list, roc_auc_val_epoch_list = [], []
+        #     pr_auc_train_epoch_list, pr_auc_val_epoch_list = [], []
 
         # Iterates over training DataLoader and performs a training step for each batch
         for batch in train_loader:
@@ -215,13 +216,13 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             loss_train, met_train, out_train = train_step(model, batch)
             # Adds loss to epoch loss
             total_epoch_loss_train += loss_train.detach()
-            # Adds accuracy to list for epoch
+            # Adds batch accuracy/rmse to list for epoch
             metric_train_epoch_list.append(met_train)
             # Update the number of graphs
             num_graphs_train += batch.segment_data.batch.max().item() + 1
 
-            preds_train = out_train[:, 1].cpu().detach().numpy()
-            labels_train = batch.y_class.cpu().detach().numpy()
+            # preds_train = out_train[:, 1].cpu().detach().numpy()
+            # labels_train = batch.y_class.cpu().detach().numpy()
 
         # Divides epoch accumulated training loss by number of graphs
         total_epoch_loss_train = total_epoch_loss_train.cpu() / num_graphs_train
@@ -238,7 +239,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         # Iterates over validation DataLoader and performs a training step for each batch
         for batch in val_loader:
             # Performs validation step
-            loss_val, met_val = val_step(model, batch)
+            loss_val, met_val, out = val_step(model, batch)
             # Adds loss to epoch loss
             total_epoch_loss_val += loss_val
             # Adds accuracy to list for epoch

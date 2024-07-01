@@ -242,9 +242,6 @@ def compute_interpolated_pr_curve(preds, labels, n_points=100, threshold_label=0
     # IDK why, but thresholds have one less element than precision and recall
     thresholds = np.append(thresholds, 1.)
 
-    print("Recall:", recall)
-    print("Precision:", precision)
-
     # Get optimal threshold
     f1_score = 2 * (precision * recall) / (precision + recall)
     optimal_threshold = thresholds[np.argmax(f1_score)]
@@ -252,9 +249,6 @@ def compute_interpolated_pr_curve(preds, labels, n_points=100, threshold_label=0
     recall_interp = np.linspace(0, 1, n_points)
     precision_interp = np.interp(recall_interp, recall[::-1], precision[::-1])
     thresholds_interp = np.interp(recall_interp, recall[::-1], thresholds[::-1])
-
-    print("Recall interp:", recall_interp)
-    print("Precision interp:", precision_interp)
 
     return auc_score, recall, precision, thresholds, recall_interp, precision_interp, thresholds_interp, optimal_threshold
 

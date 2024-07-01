@@ -17,13 +17,6 @@ def main(root, args):
 
     # Read device
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        # device = "mps"
-        device = "cpu"
-    print(f"Using device: {device}")
 
     #################################### Dataset organization ############################################
     folds_filenames = get_test_folds(root, args)
@@ -138,6 +131,8 @@ if __name__ == "__main__":
         help='Initial learning rate. Default is 0.001.')
     parser.add_argument('-lrs', '--lr_scheduler', type=str, default="poly", choices=['poly', 'plateau', 'None'],
         help='Learning rate scheduler. Default is True.')
+    parser.add_argument('-ah', '--attn_heads', type=int, default=1,
+        help='Number of heads for the GAT layers. Default is 1.')
     parser.add_argument('-agg', '--aggregation', type=str, default="mean", choices=["mean", "add", "max"],
         help='Aggregation method. Default is mean.')
     parser.add_argument('-wl', '--weighted_loss', type=str, default="exp", choices=['exp', "lin", "log", 'None'],
@@ -146,7 +141,7 @@ if __name__ == "__main__":
         help='Dropout probability. Default is 0.8.')
     parser.add_argument('-rs', '--random_state', type=int, default=42,
         help='Random state for splitting the dataset. Default is 42.')
-    parser.add_argument('-trs', '--test_random_state', type=int, default=42,
+    parser.add_argument('-trs', '--test_random_state', type=int, default=43,
         help='Random state for splitting the dataset for k-fold in test. Default is 42.')
     parser.add_argument('-f', '--folds', type=int, default=5,
         help='Folds number. Default is 5.')

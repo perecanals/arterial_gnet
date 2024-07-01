@@ -36,9 +36,9 @@ def get_model(args, dataset_description, device = "cpu"):
         String with the model name, where data (train and test) will be 
         in os.path.join(root, "models", model_name).
     """
-    model_name = "{}_bs-{}_te-{}_hc-{}_hcd-{}_op-{}_lr-{}_lrs-{}_ngl-{}_nsl-{}_ndl-{}_nol-{}_agg-{}_drop-{}_wl-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+    model_name = "{}_bs-{}_te-{}_hc-{}_hcd-{}_op-{}_lr-{}_lrs-{}_ngl-{}_nsl-{}_ndl-{}_nol-{}_ah-{}_agg-{}_drop-{}_wl-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
                                                                            args.total_epochs, args.hidden_channels, args.hidden_channels_dense, args.optimizer, args.learning_rate, args.lr_scheduler, \
-                                                                           args.num_global_layers, args.num_segment_layers, args.num_dense_layers, args.num_out_layers, args.aggregation, \
+                                                                           args.num_global_layers, args.num_segment_layers, args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
                                                                                 args.dropout, args.weighted_loss, args.oversampling, args.random_state, args.test_random_state)
     if args.is_classification:
         model_name += "_class"
@@ -53,6 +53,7 @@ def get_model(args, dataset_description, device = "cpu"):
     print(f"Number of segment layers:       {args.num_segment_layers}")
     print(f"Number of dense layers:         {args.num_dense_layers}")
     print(f"Number of output layers:        {args.num_out_layers}")
+    print(f"Number of attention heads:      {args.attn_heads}")
     print(f"Aggregation method:             {args.aggregation}")
     print(f"Dropout:                        {args.dropout}")
     print(f"Oversampling:                   {args.oversampling}")
@@ -71,6 +72,7 @@ def get_model(args, dataset_description, device = "cpu"):
             num_segment_layers=args.num_segment_layers, 
             num_dense_layers=args.num_dense_layers,
             num_out_layers=args.num_out_layers,
+            attn_heads=args.attn_heads,
             aggregation=args.aggregation,
             dropout=args.dropout,
             is_classification=args.is_classification
@@ -79,9 +81,11 @@ def get_model(args, dataset_description, device = "cpu"):
     return model, model_name
 
 class GATv2Layer(nn.Module):
-    def __init__(self, in_channels, out_channels, edge_dim=None, dropout_rate=0.2):
+    def __init__(self, in_channels, out_channels, edge_dim=None, dropout_rate=0.2, attn_heads=1):
         super(GATv2Layer, self).__init__()
-        self.conv = GATv2Conv(in_channels=in_channels, out_channels=out_channels, edge_dim=edge_dim)
+        self.conv = GATv2Conv(in_channels=in_channels, out_channels=out_channels, edge_dim=edge_dim, heads=attn_heads)
+        # self.conv = GATv2Conv(in_channels=in_channels, out_channels=out_channels, edge_dim=edge_dim, heads=attn_heads, return_attention_weights=True)
+        # What does this return when forwarded?
         self.bn = BatchNorm(out_channels)
         self.dropout = nn.Dropout(dropout_rate)
         self.edge_dim = edge_dim
@@ -128,6 +132,7 @@ class ArterialGNet(nn.Module):
             num_segment_layers=1,
             num_dense_layers=1,
             num_out_layers=1,
+            attn_heads=1,
             aggregation="mean",
             dropout=0.2,
             is_classification=True):
@@ -143,6 +148,7 @@ class ArterialGNet(nn.Module):
         self.num_segment_layers = num_segment_layers
         self.num_dense_layers = num_dense_layers
         self.num_out_layers = num_out_layers
+        self.attn_heads = attn_heads
         self.aggregation_ = aggregation 
         self.dropout = dropout
         self.is_classification = is_classification
@@ -157,14 +163,14 @@ class ArterialGNet(nn.Module):
         if self.num_segment_layers > 0:
             self.segment_path = torch.nn.ModuleList()
             for idx in range(self.num_segment_layers):
-                self.segment_path.append(GATv2Layer(self.segment_node_in_dim if idx == 0 else self.hidden_dim, self.hidden_dim, edge_dim=self.segment_edge_in_dim, dropout_rate=self.dropout))
+                self.segment_path.append(GATv2Layer(self.segment_node_in_dim if idx == 0 else self.hidden_dim, self.hidden_dim, edge_dim=self.segment_edge_in_dim, dropout_rate=self.dropout, attn_heads=self.attn_heads))
         else:
             self.segment_path = None
         
         if self.num_dense_layers > 0:
             self.dense_path = torch.nn.ModuleList()
             for idx in range(self.num_dense_layers):
-                self.dense_path.append(GATv2Layer(self.dense_node_in_dim if idx == 0 else self.hidden_dim_dense, self.hidden_dim_dense, dropout_rate=self.dropout))
+                self.dense_path.append(GATv2Layer(self.dense_node_in_dim if idx == 0 else self.hidden_dim_dense, self.hidden_dim_dense, dropout_rate=self.dropout, attn_heads=self.attn_heads))
         else:
             self.dense_path = None
         
