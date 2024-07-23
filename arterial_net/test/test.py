@@ -193,7 +193,7 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
 
         # Compute ROC curve and interpolate in 100 points to draw tpr and fpr
         auc_score, fpr, tpr, thresholds_, fpr_interp, tpr_interp, thresholds_interp, optimal_threshold = compute_interpolated_roc_curve(results_folds[fold]["preds"], results_folds[fold]["class_labels"], n_points=n_points, threshold_label=0.5)
-        results_folds[fold]["auc"] = auc_score
+        results_folds[fold]["roc_auc"] = auc_score
         results_folds[fold]["fpr"] = fpr
         results_folds[fold]["tpr"] = tpr
         results_folds[fold]["thresholds"] = thresholds_
