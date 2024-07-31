@@ -8,8 +8,8 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 from torch.utils.data import DataLoader, WeightedRandomSampler
 # from torch_geometric.loader import DataLoader # This does not allow you to override the collate_fn
 
-from arterial_net.dataloading.dataset import ArterialMapsDataset
-from arterial_net.dataloading.utils import load_pickle
+from arterial_gnet.dataloading.dataset import ArterialMapsDataset
+from arterial_gnet.dataloading.utils import load_pickle
 
 def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=None, test_transform=None):
     """

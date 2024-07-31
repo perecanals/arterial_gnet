@@ -2,13 +2,13 @@
 def main(root, args):
     import os, json
 
-    from arterial_net.dataloading.data_augmentation import get_transforms
-    from arterial_net.dataloading.dataloading import get_test_folds, get_data_loaders_with_filenames
-    from arterial_net.models.models import get_model
-    from arterial_net.train.train import run_training
-    from arterial_net.train.losses import LinearWeightedMSELoss, ScaledExponentialWeightedMSELoss, LogarithmicWeightedMSELoss, NLLLoss
+    from arterial_gnet.dataloading.data_augmentation import get_transforms
+    from arterial_gnet.dataloading.dataloading import get_test_folds, get_data_loaders_with_filenames
+    from arterial_gnet.models.models import get_model
+    from arterial_gnet.train.train import run_training
+    from arterial_gnet.train.losses import LinearWeightedMSELoss, ScaledExponentialWeightedMSELoss, LogarithmicWeightedMSELoss, NLLLoss
     from torch.nn.modules.loss import MSELoss
-    from arterial_net.test.test import run_testing
+    from arterial_gnet.test.test import run_testing
 
     import torch
 

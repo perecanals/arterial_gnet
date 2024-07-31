@@ -8,7 +8,7 @@ from torch_geometric.data import InMemoryDataset, Data
 
 from sklearn.model_selection import train_test_split
 
-from arterial_net.dataloading.utils import load_pickle, z_score_normalization, min_max_normalization, mean_centering_normalization, normalize_vector
+from arterial_gnet.dataloading.utils import load_pickle, z_score_normalization, min_max_normalization, mean_centering_normalization, normalize_vector
 
 class ArterialMapsDataset(InMemoryDataset):
     """

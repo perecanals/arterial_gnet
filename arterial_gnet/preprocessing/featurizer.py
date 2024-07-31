@@ -5,10 +5,10 @@ import networkx as nx
 
 from copy import deepcopy
 
-from arterial_net.preprocessing.utils import clean_supersegment, sort_by_hierarchy, filter_vessel_types, \
+from arterial_gnet.preprocessing.utils import clean_supersegment, sort_by_hierarchy, filter_vessel_types, \
     compute_segment_graph_node_features, compute_segment_graph_edge_features, get_vessel_type, \
         get_onehot_encoded_vessel_type, clean_node, get_supersegment_vessel_types
-from arterial_net.visualization.utils import make_combined_plot, make_dense_graph_plot
+from arterial_gnet.visualization.utils import make_combined_plot, make_dense_graph_plot
 
 class GraphFeaturizer():
     """

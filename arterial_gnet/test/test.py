@@ -2,8 +2,8 @@ import os, pickle, json
 
 import numpy as np
 
-from arterial_net.test.utils import draw_roc, draw_pr_curve, draw_regression_plot, draw_probability_distribution, compute_interpolated_roc_curve, draw_roc_folds
-from arterial_net.utils.metrics import compute_accuracy, compute_rmse, compute_classification_metrics
+from arterial_gnet.test.utils import draw_roc, draw_pr_curve, draw_regression_plot, draw_probability_distribution, compute_interpolated_roc_curve, draw_roc_folds
+from arterial_gnet.utils.metrics import compute_accuracy, compute_rmse, compute_classification_metrics
 
 import torch
 

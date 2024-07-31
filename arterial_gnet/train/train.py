@@ -2,9 +2,9 @@ import os
 
 import numpy as np
 
-from arterial_net.train.lr_schedulers import PolyLRScheduler
-from arterial_net.train.utils import make_train_plot
-from arterial_net.utils.metrics import compute_accuracy, compute_rmse
+from arterial_gnet.train.lr_schedulers import PolyLRScheduler
+from arterial_gnet.train.utils import make_train_plot
+from arterial_gnet.utils.metrics import compute_accuracy, compute_rmse
 
 import torch
 
