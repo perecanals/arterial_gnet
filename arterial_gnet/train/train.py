@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 from arterial_gnet.train.lr_schedulers import PolyLRScheduler
-from arterial_gnet.train.utils import make_train_plot
+from arterial_gnet.train.utils import make_train_plot, compute_roc_pr_auc
 from arterial_gnet.utils.metrics import compute_accuracy, compute_rmse
 
 import torch
@@ -68,6 +68,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         optimizer.zero_grad() 
         # Perform forward pass with batch
         out = model(batch.to(device)).to(device)
+    
         out = torch.squeeze(out)
         # Raise error if nan in out
         if torch.isnan(out).any():
@@ -118,6 +119,8 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             out = torch.squeeze(out)
             # Compute validation loss
             if args.is_classification:
+                if len(out.shape) == 1:
+                    out = out.unsqueeze(0)
                 loss = loss_function(out, batch.y_class)
                 # Compute accuracy for validation
                 metric = compute_accuracy(out.argmax(dim=1), batch.y_class)
@@ -134,8 +137,8 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
     print(f"Initial learning rate:          {args.learning_rate}")
     print(f"Learning rate scheduler:        {args.lr_scheduler}")
     print(f"Loss function:                  {loss_function}")
+    print(f"Oversampling:                   {args.oversampling}")
     print(f"Running on device:              {device}")
-    print(f"Number of parameters:           {sum(p.numel() for p in model.parameters() if p.requires_grad)}\n")
 
     # Define model path
     model_path = os.path.join(root, "models", model_name)
@@ -187,15 +190,15 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
     ewma_metric_train = []
     ewma_metric_val = []
 
-    # if args.is_classification:
-    #     roc_auc_train = []
-    #     pr_auc_train = []
-    #     roc_auc_val = []
-    #     pr_auc_val = []
-    #     ewma_roc_auc_train = []
-    #     ewma_pr_auc_train = []
-    #     ewma_roc_auc_val = []
-    #     ewma_pr_auc_val = []
+    if args.is_classification:
+        roc_auc_train = []
+        pr_auc_train = []
+        roc_auc_val = []
+        pr_auc_val = []
+        ewma_roc_auc_train = []
+        ewma_pr_auc_train = []
+        ewma_roc_auc_val = []
+        ewma_pr_auc_val = []
 
     # Starts training
     for epoch in range(0, args.total_epochs + 1):
@@ -204,11 +207,11 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         total_epoch_loss_train, total_epoch_loss_val = 0, 0
         metric_train_epoch_list, metric_val_epoch_list = [], []
         num_graphs_train, num_graphs_val = 0, 0
-        # if args.is_classification:
-        #     preds_train, preds_val = [], []
-        #     labels_train, labels_val = [], []
-        #     roc_auc_train_epoch_list, roc_auc_val_epoch_list = [], []
-        #     pr_auc_train_epoch_list, pr_auc_val_epoch_list = [], []
+        if args.is_classification:
+            preds_train, preds_val = [], []
+            labels_train, labels_val = [], []
+            roc_auc_train_epoch_list, roc_auc_val_epoch_list = [], []
+            pr_auc_train_epoch_list, pr_auc_val_epoch_list = [], []
 
         # Iterates over training DataLoader and performs a training step for each batch
         for batch in train_loader:
@@ -221,8 +224,9 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             # Update the number of graphs
             num_graphs_train += batch.segment_data.batch.max().item() + 1
 
-            # preds_train = out_train[:, 1].cpu().detach().numpy()
-            # labels_train = batch.y_class.cpu().detach().numpy()
+            if args.is_classification:
+                preds_train += list(out_train[:, 1].cpu().detach().numpy())
+                labels_train += list(batch.y_class.cpu().detach().numpy())
 
         # Divides epoch accumulated training loss by number of graphs
         total_epoch_loss_train = total_epoch_loss_train.cpu() / num_graphs_train
@@ -236,6 +240,14 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         ewma_losses_train.append(0.9 * ewma_losses_train[-1] + 0.1 * total_epoch_loss_train if len(ewma_losses_train) > 0 else total_epoch_loss_train)
         ewma_metric_train.append(0.9 * ewma_metric_train[-1] + 0.1 * metric_train_epoch if len(ewma_metric_train) > 0 else metric_train_epoch)
 
+        if args.is_classification:
+            roc_auc_train, pr_auc_train = compute_roc_pr_auc(preds_train, labels_train)
+            roc_auc_train_epoch_list.append(roc_auc_train)
+            pr_auc_train_epoch_list.append(pr_auc_train)
+            ewma_roc_auc_train.append(0.9 * ewma_roc_auc_train[-1] + 0.1 * roc_auc_train if len(ewma_roc_auc_train) > 0 else roc_auc_train)
+            ewma_pr_auc_train.append(0.9 * ewma_pr_auc_train[-1] + 0.1 * pr_auc_train if len(ewma_pr_auc_train) > 0 else pr_auc_train)
+            ewma_metric_train = ewma_roc_auc_train.copy()
+
         # Iterates over validation DataLoader and performs a training step for each batch
         for batch in val_loader:
             # Performs validation step
@@ -246,6 +258,10 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             metric_val_epoch_list.append(met_val)
             # Update the number of graphs
             num_graphs_val += batch.segment_data.batch.max().item() + 1
+
+            if args.is_classification:
+                preds_val += list(out[:, 1].cpu().detach().numpy())
+                labels_val += list(batch.y_class.cpu().detach().numpy())
 
         # Divides epoch accumulated validation loss by number of graphs
         total_epoch_loss_val = total_epoch_loss_val.cpu() / num_graphs_val
@@ -259,6 +275,14 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         ewma_losses_val.append(0.9 * ewma_losses_val[-1] + 0.1 * total_epoch_loss_val if len(ewma_losses_val) > 0 else total_epoch_loss_val)
         ewma_metric_val.append(0.9 * ewma_metric_val[-1] + 0.1 * metric_val_epoch if len(ewma_metric_val) > 0 else metric_val_epoch)
 
+        if args.is_classification:
+            roc_auc_val, pr_auc_val = compute_roc_pr_auc(preds_val, labels_val)
+            roc_auc_val_epoch_list.append(roc_auc_val)
+            pr_auc_val_epoch_list.append(pr_auc_val)
+            ewma_roc_auc_val.append(0.9 * ewma_roc_auc_val[-1] + 0.1 * roc_auc_val if len(ewma_roc_auc_val) > 0 else roc_auc_val)
+            ewma_pr_auc_val.append(0.9 * ewma_pr_auc_val[-1] + 0.1 * pr_auc_val if len(ewma_pr_auc_val) > 0 else pr_auc_val)
+            ewma_metric_val = ewma_roc_auc_val.copy()
+            
         # Saves best model in terms of validation loss
         if epoch > 0:
             if ewma_losses_val[-1] < np.amin(ewma_losses_val[:-1]):
@@ -297,12 +321,12 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
                 print(f"Epoch: {epoch:04d} (model {model_name})")
             print(f"Training loss (EWMA):       {ewma_losses_train[-1]:.4f}")
             if args.is_classification:
-                print(f"Training accuracy (EWMA):   {ewma_metric_train[-1]:.4f}")
+                print(f"Training ROC AUC (EWMA):   {ewma_metric_train[-1]:.4f}")
             else:
                 print(f"Training RMSE (EWMA):       {ewma_metric_train[-1]:.4f}")
             print(f"Validation loss (EWMA):     {ewma_losses_val[-1]:.4f}")
             if args.is_classification:
-                print(f"Validation accuracy (EWMA): {ewma_metric_val[-1]:.4f}")
+                print(f"Validation ROC AUC (EWMA): {ewma_metric_val[-1]:.4f}")
             else:
                 print(f"Validation RMSE (EWMA):     {ewma_metric_val[-1]:.4f}")
             print()

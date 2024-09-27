@@ -76,14 +76,14 @@ def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=
         else:
             train_filenames, val_filenames, y_class_train, y_class_val = train_test_split(train_val_filenames, y_class_train_val, test_size = args.val_size, random_state = args.random_state, stratify=y_class_train_val)
         # Now define dataset classes
-        train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform)
-        val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform)
-        test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform)
+        train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
+        val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+        test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
     else:
         print("Training with the whole dataset (ignore validation and test results)\n")
-        train_dataset = ArterialMapsDataset(root, pre_transform = pre_transform, transform = train_transform)
-        val_dataset = ArterialMapsDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform)
-        test_dataset = ArterialMapsDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform)
+        train_dataset = ArterialMapsDataset(root, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
+        val_dataset = ArterialMapsDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+        test_dataset = ArterialMapsDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform, radius = args.radius)
 
     print("------------------------------------------------ Dataset information")
     print("Total number of samples:        {}".format(len(dataset_filenames)))
@@ -97,7 +97,7 @@ def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=
         print(f"\tNumber of samples of class {class_}: {y_class_val.count(class_)} ({100 * y_class_val.count(class_)/len(y_class_val):.2f}%)")
     print("Number of testing samples:      {} ({:.2f}%)\n".format(len(test_dataset), 100 * len(test_dataset) / len(dataset_filenames)))
     for class_ in range(max(y_class_test) + 1):
-        print(f"\tNumber of samples of class {class_}: {y_class_test.count(class_)} ({100 * y_class_test.count(class_)/len(y_class_test):.2f}%)\n")
+        print(f"\tNumber of samples of class {class_}: {y_class_test.count(class_)} ({100 * y_class_test.count(class_)/len(y_class_test):.2f}%)")
 
     # Apply oversampling if enabled
     if args.oversampling:
@@ -221,9 +221,9 @@ def get_data_loaders_with_filenames(root, train_val_filenames, test_filenames, a
     else:
         train_filenames, val_filenames, y_class_train, y_class_val = train_test_split(train_val_filenames, y_class_train_val, test_size = args.val_size, random_state = args.random_state, stratify=y_class_train_val)
     # Now define dataset classes
-    train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform)
-    val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform)
-    test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform)
+    train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
+    val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+    test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
 
     print("------------------------------------------------ Dataset information")
     print("Total number of samples:        {}".format(len(dataset_filenames)))
@@ -239,7 +239,9 @@ def get_data_loaders_with_filenames(root, train_val_filenames, test_filenames, a
         print(f"\tNumber of samples of class {class_}: {y_class_val.count(class_)} ({100 * y_class_val.count(class_)/len(y_class_val):.2f}%)")
     print("Number of testing samples:      {} ({:.2f}%)".format(len(test_dataset), 100 * len(test_dataset) / len(dataset_filenames)))
     for class_ in range(max(y_class_test) + 1):
-        print(f"\tNumber of samples of class {class_}: {y_class_test.count(class_)} ({100 * y_class_test.count(class_)/len(y_class_test):.2f}%)\n")
+        print(f"\tNumber of samples of class {class_}: {y_class_test.count(class_)} ({100 * y_class_test.count(class_)/len(y_class_test):.2f}%)")
+
+    print()
 
     # Apply oversampling if enabled
     if args.oversampling:
@@ -301,3 +303,15 @@ def custom_collate_fn(batch):
 
     return batch_data
 
+
+def get_test_data_loader(root, pre_transform=None, test_transform=None, radius=0):
+    test_filenames = [f for f in os.listdir(os.path.join(root, "raw")) if f.endswith(".pickle")]
+    y_class = [load_pickle(os.path.join(root, "raw", f))["classification"] for f in test_filenames]
+    test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = radius)
+    print("Number of testing samples:      {} ({:.2f}%)\n".format(len(test_dataset), 100 * len(test_dataset) / len(test_filenames)))
+    for class_ in range(max(y_class) + 1):
+        print(f"\tNumber of samples of class {class_}: {y_class.count(class_)} ({100 * y_class.count(class_)/len(y_class):.2f}%)")
+
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
+
+    return test_loader

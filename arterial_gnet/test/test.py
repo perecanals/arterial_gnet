@@ -2,12 +2,12 @@ import os, pickle, json
 
 import numpy as np
 
-from arterial_gnet.test.utils import draw_roc, draw_pr_curve, draw_regression_plot, draw_probability_distribution, compute_interpolated_roc_curve, draw_roc_folds
+from arterial_gnet.test.utils import draw_roc, draw_pr_curve, select_optimal_threshold, draw_regression_plot, draw_probability_distribution, compute_interpolated_roc_curve, draw_roc_folds
 from arterial_gnet.utils.metrics import compute_accuracy, compute_rmse, compute_classification_metrics
 
 import torch
 
-def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=None, is_classification=False):
+def run_testing(root, model_name, test_loader, model="latest", device="cpu", fold=None, is_classification=False):
     """
     Performs testing of a model over a test set. If the model is not input, it loads the 
     best model (model_best.pth) from the corresponditestng model dir.
@@ -75,19 +75,19 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
     # Performs testing with best model (minimum validation loss)
     if isinstance(model, str):
         if model == "best":
-            model = torch.load(os.path.join(model_path, "model_best_loss.pth"))
+            model = torch.load(os.path.join(model_path, "model_best_loss.pth"), map_location=device)
             test_dir = os.path.join(model_path, "test_best")
             test_dir_suffix = "test_best"
         elif model == "latest":
-            model = torch.load(os.path.join(model_path, "model_latest.pth"))
+            model = torch.load(os.path.join(model_path, "model_latest.pth"), map_location=device)
             test_dir = os.path.join(model_path, "test_latest")
             test_dir_suffix = "test_latest"
         elif model == "metric":
-            model = torch.load(os.path.join(model_path, "model_best_metric.pth"))
+            model = torch.load(os.path.join(model_path, "model_best_metric.pth"), map_location=device)
             test_dir = os.path.join(model_path, "test_metric")
             test_dir_suffix = "test_metric"
         else:
-            model = torch.load(os.path.join(model_path, "model_best_loss.pth"))
+            model = torch.load(os.path.join(model_path, "model_best_loss.pth"), map_location=device)
             test_dir = os.path.join(model_path, "test")
             test_dir_suffix = "test"
     elif isinstance(model, torch.nn.Module):
@@ -95,7 +95,10 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
         test_dir_suffix = "test"
     else:
         raise ValueError("Model must be a string or a torch.nn.Module.")
-            
+
+    # Move model to the specified device
+    model = model.to(device)
+
     os.makedirs(test_dir, exist_ok=True)
     os.makedirs(os.path.join(test_dir, "preds"), exist_ok=True)
     os.makedirs(os.path.join(test_dir, "labels"), exist_ok=True)
@@ -128,8 +131,9 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
         np.savetxt(os.path.join(test_dir, "rmse_mean.out"), [np.mean(metric_test), np.std(metric_test)])
 
     # Draw ROC curve
-    roc_auc, optimal_threshold = draw_roc(preds, labels, class_labels, os.path.join(test_dir, f"roc_{test_dir_suffix}.png"))
-    pr_auc = draw_pr_curve(preds, labels, class_labels, os.path.join(test_dir, f"roc_{test_dir_suffix}.png"))
+    roc_auc = draw_roc(preds, labels, class_labels, os.path.join(test_dir, f"roc_{test_dir_suffix}.png"))
+    pr_auc = draw_pr_curve(preds, labels, class_labels, os.path.join(test_dir, f"pr_{test_dir_suffix}.png"))
+    optimal_threshold = select_optimal_threshold(preds, class_labels, criterion="youden")
     if is_classification:
         # Draw probability distribution
         draw_probability_distribution(preds, class_labels, optimal_threshold, os.path.join(test_dir, f"probability_distribution_{test_dir_suffix}.png"))
@@ -155,7 +159,7 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
     if fold is not None:
         compute_results_over_folds(root, model_name, test_dir_suffix, is_classification)
 
-def compute_results_over_folds(root, model_name, test_dir_suffix, is_classification=False):
+def compute_results_over_folds(root, model_name, test_dir_suffix, is_classification=False, model_dir=None):
     """
     Computes testing results over folds. Aggregates results from different folds, computing 
     a ROC curve with 95% CI bands.
@@ -166,8 +170,15 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
         Path to root folder.
     model_name : string
         Name of the model.
+    test_dir_suffix : string
+        Suffix for the test directory.
+    is_classification : bool, optional
+        Whether the task is is_classification or regression. The default is False.
+    model_dir : string, optional
+        Path to the model directory. The default is None.
     """
-    model_dir = os.path.join(root, "models", model_name)
+    if model_dir is None:
+        model_dir = os.path.join(root, "models", model_name)
     results_folds = {}
 
     aucs = []
@@ -244,3 +255,152 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
         pickle.dump(results_folds, f)
     with open(os.path.join(model_dir, f"roc_results_{test_dir_suffix}.json"), "w") as f:
         json.dump(roc_results, f)
+
+def run_external_testing(model_dir, model_name, test_loader, dataset_name="external_testing", model="latest", device="cpu", fold=None, is_classification=False):
+    """
+    Performs testing of a model over a test set. If the model is not input, it loads the 
+    best model (model_best.pth) from the corresponditestng model dir.
+
+    Parameters
+    ----------
+    root : string or path-like object
+        Path to root folder.
+    model_name : string
+        Name of the model.
+    test_loader : torch_geometric.loader.DataLoader
+        DataLoader for testing.
+    dataset_name : string
+        Tag for the testing set. Will be used to store all test results.
+    model : str or torch.nn.Module, optional
+        Model to test. The default is "best", which loads the best model from the model dir.
+        If a torch.nn.Module is input, it tests the model directly.
+    device : string, optional
+        Device to use for testing. The default is "cpu".
+    fold : int, optional
+        Fold number. The default is None.
+    is_classification : bool, optional
+        Whether the task is is_classification or regression. The default is False.
+    """
+    def test_step(model, graph):
+        """
+        Performs a testing step for a single graph.
+
+        Parameters
+        ----------
+        model : torch.nn.Module
+            Model to test.
+        graph : torch_geometric.data.Batch
+            Graph to test.
+
+        Returns
+        -------
+        pred : torch.tensor
+            Predictions for the graph.
+        label : torch.tensor
+            Labels for the graph.
+        metric : float
+            Accuracy for the graph if is_classification is True otherwise RMSE.
+        """
+        # Set model in evaluation mode
+        model.eval()
+        # In validation we do not keep track of gradients
+        with torch.no_grad():
+            # Perform inference with single graph
+            pred = model(graph.to(device))
+        if is_classification:
+            # Get label from graph
+            label = graph.y_class
+            # Compute accuracy for testing
+            metric = compute_accuracy(pred.argmax(dim=1), graph.y_class)
+        else:
+            # Get label from graph
+            label = graph.y
+            # Compute RMSE for testing
+            metric = compute_rmse(pred, graph.y)
+        return pred, label, metric
+    # Define model path
+    model_path = model_dir
+    if fold is not None:
+        model_path = os.path.join(model_path, f"fold_{fold}")
+
+    # Performs testing with best model (minimum validation loss)
+    if isinstance(model, str):
+        if model == "best":
+            model = torch.load(os.path.join(model_path, "model_best_loss.pth"), map_location=device)
+            test_dir_suffix = "test_best"
+        elif model == "latest":
+            model = torch.load(os.path.join(model_path, "model_latest.pth"), map_location=device)
+            test_dir_suffix = "test_latest"
+        elif model == "metric":
+            model = torch.load(os.path.join(model_path, "model_best_metric.pth"), map_location=device)
+            test_dir_suffix = "test_metric"
+        else:
+            model = torch.load(os.path.join(model_path, "model_best_loss.pth"), map_location=device)
+            test_dir_suffix = "test"
+    elif isinstance(model, torch.nn.Module):
+        test_dir_suffix = "test"
+    else:
+        raise ValueError("Model must be a string or a torch.nn.Module.")
+    # Set test dir with dataset name
+    test_dir_suffix = dataset_name + "_" + test_dir_suffix
+    test_dir = os.path.join(model_path, test_dir_suffix)
+            
+    os.makedirs(test_dir, exist_ok=True)
+    os.makedirs(os.path.join(test_dir, "preds"), exist_ok=True)
+    os.makedirs(os.path.join(test_dir, "labels"), exist_ok=True)
+    os.makedirs(os.path.join(test_dir, "class_labels"), exist_ok=True)
+
+    preds, labels, metric_test, class_labels = [], [], [], []
+    for graph in test_loader:
+        pred, label, met = test_step(model, graph)
+        if is_classification:
+            # There are three classes, but we are interested in the probability of the positive class (1 - the prob of the negative class)
+            preds.append(1 - pred.cpu().numpy()[0][0])
+            labels.append(label.cpu().numpy()[0])
+            metric_test.append(met)
+            class_labels.append(graph.cpu().y_class.numpy()[0])
+        else:
+            preds.append(pred.cpu().numpy()[0][0])
+            labels.append(label.cpu().numpy()[0])
+            metric_test.append(met)
+            class_labels.append(graph.cpu().y_class.numpy()[0])
+        np.save(os.path.join(test_dir, "labels", f"{graph.id[0]}.npy"), label.cpu())
+        np.save(os.path.join(test_dir, "preds", f"{graph.id[0]}.npy"), pred.cpu())
+        np.save(os.path.join(test_dir, "class_labels", f"{graph.id[0]}.npy"), graph.y_class.cpu())
+
+    # Saves testing metrics in test directory
+    if is_classification:
+        np.savetxt(os.path.join(test_dir, "accuracy.out"), metric_test)
+        np.savetxt(os.path.join(test_dir, "accuracy_mean.out"), [np.mean(metric_test), np.std(metric_test)])
+    else:
+        np.savetxt(os.path.join(test_dir, "rmse.out"), metric_test)
+        np.savetxt(os.path.join(test_dir, "rmse_mean.out"), [np.mean(metric_test), np.std(metric_test)])
+
+    # Draw ROC curve
+    roc_auc = draw_roc(preds, labels, class_labels, os.path.join(test_dir, f"roc_{test_dir_suffix}.png"))
+    pr_auc = draw_pr_curve(preds, labels, class_labels, os.path.join(test_dir, f"pr_{test_dir_suffix}.png"))
+    optimal_threshold = select_optimal_threshold(preds, class_labels, criterion="youden")
+    if is_classification:
+        # Draw probability distribution
+        draw_probability_distribution(preds, class_labels, optimal_threshold, os.path.join(test_dir, f"probability_distribution_{test_dir_suffix}.png"))
+    else:
+        # Draw regression plot 
+        draw_regression_plot(preds, labels, class_labels, optimal_threshold, os.path.join(test_dir, f"regression_plot_{test_dir_suffix}.png"))
+
+    accuracy, precision, sensitivity, specificity, f1, weighted_f1, mcc = compute_classification_metrics(preds, class_labels, optimal_threshold, threshold_label=0.5)
+
+    # Print testing metrics
+    print(f"------------------------------------------------ Testing metrics {test_dir_suffix}")
+    print(f"ROC AUC:           {roc_auc:.2f}")
+    print(f"PR AUC:            {pr_auc:.2f}")
+    print(f"Optimal threshold: {optimal_threshold:.2f}")
+    print(f"Accuracy:          {accuracy:.2f}")
+    print(f"Precision:         {precision:.2f}")
+    print(f"Sensitivity:       {sensitivity:.2f}")
+    print(f"Specificity:       {specificity:.2f}")
+    print(f"F1:                {f1:.2f}")
+    print(f"Weighted F1:       {weighted_f1:.2f}")
+    print(f"MCC:               {mcc:.2f}")
+
+    if fold is not None:
+        compute_results_over_folds(None, model_name, test_dir_suffix, is_classification, model_dir = model_dir)

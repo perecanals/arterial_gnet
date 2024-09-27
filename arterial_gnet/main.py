@@ -71,8 +71,7 @@ def main(root, args):
 
         if args.test:
             # Run testing
-            # for model_test in ["best", "latest", "metric"]:
-            for model_test in ["best"]:
+            for model_test in ["best", "latest"]:
                 run_testing(
                     root,
                     model_name,
@@ -82,6 +81,8 @@ def main(root, args):
                     fold = fold,
                     is_classification = args.is_classification
                 )
+
+    return model_name, os.path.join(root, "models", model_name)
 
 if __name__ == "__main__":
     import os, sys
@@ -112,6 +113,8 @@ if __name__ == "__main__":
         help='Number of segment layers. Default is 1.')
     parser.add_argument('-ndl', '--num_dense_layers', type=int, default=1,
         help='Number of dense layers. Default is 1.')
+    parser.add_argument('-nol', '--num_out_layers', type=int, default=1,
+        help='Number of output layers. Default is 1.')
     parser.add_argument('-te', '--total_epochs', type=int, default=500, 
         help='Total number of epochs. Default is 500.')
     parser.add_argument('-optim', '--optimizer', type=str, default="adam", choices=["adam", "sgd"],
@@ -120,6 +123,8 @@ if __name__ == "__main__":
         help='Initial learning rate. Default is 0.001.')
     parser.add_argument('-lrs', '--lr_scheduler', type=str, default="poly", choices=['poly', 'plateau', 'None'],
         help='Learning rate scheduler. Default is True.')
+    parser.add_argument('-ah', '--attn_heads', type=int, default=1,
+        help='Number of heads for the GAT layers. Default is 1.')
     parser.add_argument('-agg', '--aggregation', type=str, default="mean", choices=["mean", "add", "max"],
         help='Aggregation method. Default is mean.')
     parser.add_argument('-wl', '--weighted_loss', type=str, default="exp", choices=['exp', "lin", "log", 'None'],

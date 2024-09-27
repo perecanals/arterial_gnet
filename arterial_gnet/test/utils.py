@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from sklearn.metrics import roc_curve, auc, precision_recall_curve
+from sklearn.metrics import roc_curve, auc, precision_recall_curve, f1_score
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -11,7 +11,7 @@ import warnings
 # Suppress future warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-def draw_roc(preds, labels, class_labels, output_path=None):
+def draw_roc(preds, labels, class_labels, output_path=None, ax=None):
     """
     Draw a ROC curve.
 
@@ -31,7 +31,10 @@ def draw_roc(preds, labels, class_labels, output_path=None):
     df["class"] = np.where(df["class"] > 0.5, 1, 0) # Binarize class labels
 
     # Draw ROC
-    _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi = 1000)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+    else:
+        fig = ax.figure
     ax.grid(alpha=0.5, lw=0.5)
     plt.rcParams.update({'font.size': 14})
     fpr, tpr, thresholds = roc_curve(df["class"], df["predictions"])
@@ -43,15 +46,12 @@ def draw_roc(preds, labels, class_labels, output_path=None):
     ax.legend(fontsize = 8)
     plt.tight_layout()
     if output_path is not None:
-        plt.savefig(output_path, dpi = 1000)
-        df.to_excel(output_path.replace(".png", ".xlsx"), index = False)
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
-    # Compute optimal threshold, maximum Youden index
-    optimal_threshold = thresholds[np.argmax(tpr - fpr)]
+    return roc_auc
 
-    return roc_auc, optimal_threshold
-
-def draw_pr_curve(preds, labels, class_labels, output_path=None):
+def draw_pr_curve(preds, labels, class_labels, output_path=None, ax=None):
     """
     Draw a precision-recall curve.
 
@@ -71,7 +71,10 @@ def draw_pr_curve(preds, labels, class_labels, output_path=None):
     df["class"] = np.where(df["class"] > 0.5, 1, 0) # Binarize class labels
 
     # Draw PR curve
-    _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi = 1000)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+    else:
+        fig = ax.figure
     ax.grid(alpha=0.5, lw=0.5)
     plt.rcParams.update({'font.size': 14})
     precision, recall, thresholds = precision_recall_curve(df["class"], df["predictions"])
@@ -82,12 +85,46 @@ def draw_pr_curve(preds, labels, class_labels, output_path=None):
     ax.legend(fontsize = 8)
     plt.tight_layout()
     if output_path is not None:
-        plt.savefig(output_path, dpi = 1000)
-        df.to_excel(output_path.replace(".png", ".xlsx"), index = False)
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
     return pr_auc
 
-def draw_regression_plot(preds, labels, class_labels, optimal_threshold=None, output_path=None):
+def select_optimal_threshold(preds, class_labels, criterion="youden"):
+    """
+    Select optimal threshold for classification.
+
+    Parameters
+    ----------
+    preds : list
+        Predictions.
+    class_labels : list
+        Class labels.
+    criterion : str
+        Method to select the optimal threshold. Default is "youden".
+
+    Returns
+    -------
+    float
+        Optimal threshold.
+    """
+    # Build dataframe
+    df = pd.DataFrame({"predictions": preds, "class": class_labels})
+    df["class"] = np.where(df["class"] > 0.5, 1, 0) # Binarize class labels
+
+    if criterion == "youden":
+        # Compute optimal threshold, maximum Youden index
+        fpr, tpr, thresholds = roc_curve(df["class"], df["predictions"])
+        optimal_threshold = thresholds[np.argmax(tpr - fpr)]
+    elif criterion == "f1":
+        # Compute optimal threshold for maximum f1
+        precision, recall, thresholds_pr = precision_recall_curve(df["class"], df["predictions"])
+        f1 = 2 * (precision * recall) / (precision + recall)
+        optimal_threshold = thresholds_pr[np.argmax(f1)]
+    
+    return optimal_threshold
+
+def draw_regression_plot(preds, labels, class_labels, optimal_threshold=None, output_path=None, ax=None):
     """
     Draw a regression plot.
 
@@ -107,7 +144,10 @@ def draw_regression_plot(preds, labels, class_labels, optimal_threshold=None, ou
     # Build dataframe
     df = pd.DataFrame({"Predictions": preds, "Labels": labels, "Class": class_labels})
 
-    _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi = 1000)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+    else:
+        fig = ax.figure
     ax.grid(alpha=0.5, lw=0.5)
     plt.rcParams.update({'font.size': 14})
 
@@ -124,9 +164,12 @@ def draw_regression_plot(preds, labels, class_labels, optimal_threshold=None, ou
     ax.legend(handles=handles, labels=labels, fontsize = 8)
     plt.tight_layout()
     if output_path is not None:
-        plt.savefig(output_path, dpi = 1000)
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
-def draw_probability_distribution(preds, labels, threshold, output_path=None):
+    return fig, ax
+
+def draw_probability_distribution(preds, labels, optimal_threshold=None, output_path=None, ax=None):
     """
     Draw a probability distribution.
 
@@ -145,13 +188,16 @@ def draw_probability_distribution(preds, labels, threshold, output_path=None):
     df = pd.DataFrame({"predictions": preds, "labels": labels})
 
     # Identify tp, tn, fp, fn based on predictions, labels, and threshold
-    df["tp"] = np.where((df["predictions"] >= threshold) & (df["labels"] == 1), True, False)
-    df["tn"] = np.where((df["predictions"] < threshold) & (df["labels"] == 0), True, False)
-    df["fp"] = np.where((df["predictions"] >= threshold) & (df["labels"] == 0), True, False)
-    df["fn"] = np.where((df["predictions"] < threshold) & (df["labels"] == 1), True, False)
+    df["tp"] = np.where((df["predictions"] >= optimal_threshold) & (df["labels"] == 1), True, False)
+    df["tn"] = np.where((df["predictions"] < optimal_threshold) & (df["labels"] == 0), True, False)
+    df["fp"] = np.where((df["predictions"] >= optimal_threshold) & (df["labels"] == 0), True, False)
+    df["fn"] = np.where((df["predictions"] < optimal_threshold) & (df["labels"] == 1), True, False)
 
     # Plot setup
-    _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi=1000)
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+    else:
+        fig = ax.figure
     ax.grid(alpha=0.5, lw=0.5)
 
     # Histogram settings
@@ -164,8 +210,13 @@ def draw_probability_distribution(preds, labels, threshold, output_path=None):
     sns.histplot(df[df["fp"]]["predictions"], color="red", kde=False, ax=ax, alpha=alpha, bins=bins, label="FP")
     sns.histplot(df[df["fn"]]["predictions"], color="orange", kde=False, ax=ax, alpha=alpha, bins=bins, label="FN")
 
+    # If y_lim_max is higher than 60, set it to 60
+    y_lim_max = 60
+    if max(ax.get_ylim()) > y_lim_max:
+        ax.set_ylim([0, y_lim_max])
+
     # Additional plot adjustments
-    ax.axvline(x=threshold, color="red", lw=1) # Threshold line
+    ax.axvline(x=optimal_threshold, color="red", lw=1) # Threshold line
     ax.set_xlabel("Predicted value")
     ax.set_ylabel("Count")
     ax.legend(fontsize=10)
@@ -173,7 +224,8 @@ def draw_probability_distribution(preds, labels, threshold, output_path=None):
 
     # Save plot if an output path is provided
     if output_path is not None:
-        plt.savefig(output_path, dpi=1000)
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
 def compute_interpolated_roc_curve(preds, labels, n_points=100, threshold_label=0.5):
     """
@@ -283,7 +335,7 @@ def draw_roc_folds(results_folds, n_points=100, output_path=None):
     tprs_lower = np.maximum(mean_tpr - 1.96 * std_tpr / np.sqrt(len(results_folds)), 0)
 
     # Draw ROC
-    _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi = 1000)
+    fig, ax = plt.subplots(1, 1, figsize=(6, 5))
     ax.grid(alpha=0.5, lw=0.5)
     plt.rcParams.update({'font.size': 14})
     ax.plot(mean_fpr_interp, mean_tpr, label=f"Test ROC (AUC = {np.mean(aucs):.2f} [{np.mean(aucs) - 1.96 * np.std(aucs) / np.sqrt(len(aucs)):.2f}-{np.mean(aucs) + 1.96 * np.std(aucs) / np.sqrt(len(aucs)):.2f}])", lw=1.25, color="crimson")
@@ -299,7 +351,8 @@ def draw_roc_folds(results_folds, n_points=100, output_path=None):
     plt.tight_layout()
 
     if output_path is not None:
-        plt.savefig(output_path, dpi = 1000)
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
     results = {
         "mean_fpr": mean_fpr_interp.tolist(),
@@ -348,7 +401,7 @@ def draw_pr_folds(results_folds, n_points=100, output_path=None):
     precisions_lower = np.maximum(mean_precision - 1.96 * std_precision / np.sqrt(len(results_folds)), 0)
 
     # Draw ROC
-    _, ax = plt.subplots(1, 1, figsize=(6, 5), dpi = 1000)
+    fig, ax = plt.subplots(1, 1, figsize=(6, 5))
     ax.grid(alpha=0.5, lw=0.5)
     plt.rcParams.update({'font.size': 14})
     ax.plot(mean_recall_interp, mean_precision, label=f"Test PR (AUC = {np.mean(aucs):.2f} [{np.mean(aucs) - 1.96 * np.std(aucs) / np.sqrt(len(aucs)):.2f}-{np.mean(aucs) + 1.96 * np.std(aucs) / np.sqrt(len(aucs)):.2f}])", lw=1.25, color="crimson")
@@ -364,7 +417,8 @@ def draw_pr_folds(results_folds, n_points=100, output_path=None):
     plt.tight_layout()
 
     if output_path is not None:
-        plt.savefig(output_path, dpi = 1000)
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
     results = {
         "mean_recall": mean_recall_interp.tolist(),
@@ -381,3 +435,41 @@ def draw_pr_folds(results_folds, n_points=100, output_path=None):
     }
 
     return results
+
+def compute_classification_metrics(preds, class_labels, threshold=0.5, threshold_label=0.5, output_path=None):
+    preds = np.array(preds) >= threshold
+    class_labels = np.array(class_labels) >= threshold_label
+
+    tp = np.sum((preds == 1) & (class_labels == 1))
+    tn = np.sum((preds == 0) & (class_labels == 0))
+    fp = np.sum((preds == 1) & (class_labels == 0))
+    fn = np.sum((preds == 0) & (class_labels == 1))
+
+    accuracy = (tp + tn) / (tp + tn + fp + fn) if tp + tn + fp + fn > 0 else 0
+    precision = tp / (tp + fp) if tp + fp > 0 else 0
+    sensitivity = tp / (tp + fn) if tp + fn > 0 else 0
+    specificity = tn / (tn + fp) if tn + fp > 0 else 0
+    f1 = 2 * (precision * sensitivity) / (precision + sensitivity) if precision + sensitivity > 0 else 0
+    weighted_f1 = f1_score(class_labels, preds, average='weighted')
+    mcc = (tp * tn - fp * fn) / np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)) if (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn) > 0 else 0
+    ppv = tp / (tp + fp) if tp + fp > 0 else 0
+    npv = tn / (tn + fn) if tn + fn > 0 else 0
+
+    # Plot confusion matrix
+    cm = np.array([[tn, fp], [fn, tp]])
+    fig, ax = plt.subplots()
+    sns.heatmap(cm, cmap=plt.cm.Blues, fmt='g', ax=ax)
+    ax.set_title(f'Confusion matrix (opt. threshold: {threshold:.2f})')
+    ax.set_ylabel(f'True label')
+    ax.set_xlabel(f'Predicted label')
+    # Set text at the center of the cells (for some reason it does not print these)
+    ax.text(0.33, 0.5, f"{cm[0, 0]}", fontsize=12, color="white")
+    ax.text(1.38, 0.5, f"{cm[0, 1]}", fontsize=12, color="black")
+    ax.text(0.38, 1.5, f"{cm[1, 0]}", fontsize=12, color="black")
+    ax.text(1.38, 1.5, f"{cm[1, 1]}", fontsize=12, color="black")
+
+    if output_path is not None:
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
+
+    return accuracy, precision, sensitivity, specificity, f1, weighted_f1, mcc, ppv, npv

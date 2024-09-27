@@ -25,7 +25,7 @@ class ArterialMapsDataset(InMemoryDataset):
     by the models.
 
     """
-    def __init__(self, root, raw_file_names_list = None, processed_file_names_list = None, pre_transform = None, transform = None):
+    def __init__(self, root, raw_file_names_list = None, processed_file_names_list = None, pre_transform = None, transform = None, radius = 0):
         if os.path.exists(os.path.join(root, "dataset.json")):
             pass
         else:
@@ -35,7 +35,10 @@ class ArterialMapsDataset(InMemoryDataset):
             self.dataset_description = json.load(f)
         self.raw_file_names_list = raw_file_names_list
         self.processed_file_names_list = processed_file_names_list
-        os.makedirs(os.path.join(root, "processed"), exist_ok=True)
+        self.processed_dir_radius = os.path.join(root, f"processed_radius-{radius}")
+        self.processed = self.processed_dir_radius
+        os.makedirs(os.path.join(root, f"processed"), exist_ok=True) # Auxiliary folder for non-radius-based processing (necessary for the code to work)
+        os.makedirs(self.processed_dir_radius, exist_ok=True) # Actual folder for radius-based processing
         super(ArterialMapsDataset, self).__init__(root=root, pre_transform=pre_transform, transform=transform)
         self.process()
 
@@ -51,13 +54,13 @@ class ArterialMapsDataset(InMemoryDataset):
         if self.processed_file_names_list is not None:
             return self.processed_file_names_list
         else:
-            return sorted([f for f in sorted(os.listdir(self.processed_dir)) if f.endswith(".pt")])
+            return sorted([f for f in sorted(os.listdir(self.processed_dir_radius)) if f.endswith(".pt")])
         
     def process(self): 
         # Here you would read your raw files, create Data objects, and apply any pre-transforms
         data_list = []
         for raw_file_path in self.raw_file_names:
-            preprocessed_file_path = os.path.join(self.processed_dir, "{}.pt".format(raw_file_path.split(".")[0]))
+            preprocessed_file_path = os.path.join(self.processed_dir_radius, "{}.pt".format(raw_file_path.split(".")[0]))
             if os.path.exists(preprocessed_file_path):
                 data_list.append(torch.load(preprocessed_file_path))         
             else:
@@ -114,7 +117,7 @@ class ArterialMapsDataset(InMemoryDataset):
                     data = self.pre_transform(data)
                 data_list.append(data)
                 torch.save(data, preprocessed_file_path)
-    
+
         self.data_list = data_list
 
     def __len__(self):
@@ -123,7 +126,7 @@ class ArterialMapsDataset(InMemoryDataset):
     def __getitem__(self, idx):
         data = self.data_list[idx]
         if self.transform is not None:
-            data = self.transform(data)
+            data.dense_data = self.transform(data.dense_data)
         return data
     
     def clean_node_indexing(self, graph_nx):

@@ -1,33 +1,50 @@
 
-def main(root, args):
-    import os, json
+import os, shutil, json
 
-    from arterial_gnet.dataloading.data_augmentation import get_transforms
-    from arterial_gnet.dataloading.dataloading import get_test_folds, get_data_loaders_with_filenames
-    from arterial_gnet.models.models import get_model
-    from arterial_gnet.train.train import run_training
-    from arterial_gnet.train.losses import LinearWeightedMSELoss, ScaledExponentialWeightedMSELoss, LogarithmicWeightedMSELoss, NLLLoss
-    from torch.nn.modules.loss import MSELoss
-    from arterial_gnet.test.test import run_testing
+from arterial_gnet.dataloading.data_augmentation import get_transforms
+from arterial_gnet.dataloading.dataloading import get_test_folds, get_data_loaders_with_filenames
+from arterial_gnet.models.models import get_model
+from arterial_gnet.train.train import run_training
+from arterial_gnet.train.losses import LinearWeightedMSELoss, ScaledExponentialWeightedMSELoss, LogarithmicWeightedMSELoss, NLLLoss
+from torch.nn.modules.loss import MSELoss
+from arterial_gnet.test.test import run_testing
 
-    import torch
+import torch
+
+# Set random state
+import random
+import numpy as np
+import torch
+
+def main(root, args, root_models=None):
+
+    random.seed(args.random_state)
+    np.random.seed(args.random_state)
+    torch.manual_seed(args.random_state)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
     print("------------------------------------------------")
     print("Running training and testing for ArterialGNet\n")
 
+    if root_models is None:
+        root_models = root
+
     # Read device
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
 
     #################################### Dataset organization ############################################
     folds_filenames = get_test_folds(root, args)
 
     for test_fold in range(args.test_folds):
+        # if test_fold < 4:
+        #     continue
         print("Test fold: {}".format(test_fold))
 
         train_val_filenames, test_filenames = folds_filenames[test_fold]
 
         # Define pre-transforms (applied to the graph before batching, regardless of training or testing)
-        pre_transform, train_transform, test_transform = get_transforms(device)
+        pre_transform, train_transform, test_transform = get_transforms(device, args)
         for fold in (range(args.folds) if args.folds is not None else [None]):
             if args.folds is not None and args.skip_folds is not None and fold < args.skip_folds:
                 continue
@@ -39,13 +56,12 @@ def main(root, args):
 
             #################################### Model definition ################################################
             model, model_name = get_model(args, dataset_description, device)
-            
+
             if args.train:
                 if args.is_classification:
                     # Define loss function
                     if dataset_description["graph_class_frequencies"] is not None and not args.oversampling:
                         if args.class_loss == "ce":
-                            # dataset_description["graph_class_frequencies"] = [sum(dataset_description["graph_class_frequencies"][:-1]), dataset_description["graph_class_frequencies"][-1]]
                             loss_function = torch.nn.CrossEntropyLoss(weight = 1 / torch.tensor(dataset_description["graph_class_frequencies"], dtype=torch.float).to(device))
                         elif args.class_loss == "nll":
                             loss_function = NLLLoss(class_frequencies=dataset_description["graph_class_frequencies"])
@@ -65,7 +81,7 @@ def main(root, args):
                         loss_function = LogarithmicWeightedMSELoss()
                 # Run training
                 run_training(
-                    root,
+                    root_models,
                     model,
                     model_name,
                     train_loader,
@@ -78,10 +94,9 @@ def main(root, args):
 
             if args.test:
                 # Run testing
-                for model_test in ["best", "latest", "metric"]:
-                # for model_test in ["best"]:
+                for model_test in ["latest"]:
                     run_testing(
-                        root,
+                        root_models,
                         model_name,
                         test_loader,
                         model = model_test,
@@ -90,7 +105,11 @@ def main(root, args):
                         is_classification = args.is_classification
                     )
 
-        os.rename(os.path.join(root, "models", model_name), os.path.join(root, "models", model_name + "_tf-{}".format(test_fold)))
+        if os.path.exists(os.path.join(root_models, "models", model_name + "_tf-{}".format(test_fold))):
+            shutil.rmtree(os.path.join(root_models, "models", model_name + "_tf-{}".format(test_fold)))
+        os.rename(os.path.join(root_models, "models", model_name), os.path.join(root_models, "models", model_name + "_tf-{}".format(test_fold)))
+
+    return model_name, os.path.join(root_models, "models", model_name)
 
 if __name__ == "__main__":
     import os, sys
@@ -107,14 +126,22 @@ if __name__ == "__main__":
     parser.add_argument('-vs', '--val_size', type=float, default=0.2,
         help='Dataset ratio for validation, with respect to the size of the training dataset (after subtracting testing set)'
         'It will be overrun if args.folds is not None (size will be (1 - test_size) / args.folds). Default is 0.2.')
-    parser.add_argument('-bs', '--batch_size', type=int, default=64, 
-        help='Batch size for training and validation. Default is 64.')
     parser.add_argument('-bnm', '--base_model_name', type=str, default="ArterialGNet", 
         help='Base model name. Default is ArterialGNet.')
+    parser.add_argument('-bs', '--batch_size', type=int, default=64, 
+        help='Batch size for training and validation. Default is 64.')
+    parser.add_argument('-te', '--total_epochs', type=int, default=500, 
+        help='Total number of epochs. Default is 500.')
     parser.add_argument('-hc', '--hidden_channels', type=int, default=8, 
         help='Number of hidden channels. Default is 8.')
     parser.add_argument('-hcd', '--hidden_channels_dense', type=int, default=None, 
         help='Number of hidden channels of the dense layers. Default is None, which defaults to the number --hidden_channels.')
+    parser.add_argument('-op', '--optimizer', type=str, default="adam", choices=["adam", "sgd"],
+        help='Optimizer. Default is adam.')
+    parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, 
+        help='Initial learning rate. Default is 0.001.')
+    parser.add_argument('-lrs', '--lr_scheduler', type=str, default="poly", choices=['poly', 'plateau', 'None'],
+        help='Learning rate scheduler. Default is True.')
     parser.add_argument('-ngl', '--num_global_layers', type=int, default=1,
         help='Number of global layers. Default is 1.')
     parser.add_argument('-nsl', '--num_segment_layers', type=int, default=1,
@@ -123,22 +150,18 @@ if __name__ == "__main__":
         help='Number of dense layers. Default is 1.')
     parser.add_argument('-nol', '--num_out_layers', type=int, default=1,
         help='Number of output layers. Default is 1.')
-    parser.add_argument('-te', '--total_epochs', type=int, default=500, 
-        help='Total number of epochs. Default is 500.')
-    parser.add_argument('-optim', '--optimizer', type=str, default="adam", choices=["adam", "sgd"],
-        help='Optimizer. Default is adam.')
-    parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, 
-        help='Initial learning rate. Default is 0.001.')
-    parser.add_argument('-lrs', '--lr_scheduler', type=str, default="poly", choices=['poly', 'plateau', 'None'],
-        help='Learning rate scheduler. Default is True.')
     parser.add_argument('-ah', '--attn_heads', type=int, default=1,
         help='Number of heads for the GAT layers. Default is 1.')
     parser.add_argument('-agg', '--aggregation', type=str, default="mean", choices=["mean", "add", "max"],
         help='Aggregation method. Default is mean.')
-    parser.add_argument('-wl', '--weighted_loss', type=str, default="exp", choices=['exp', "lin", "log", 'None'],
-        help='Whether to use weighted loss and what type. Default is exp.')
     parser.add_argument('-drop', '--dropout', type=float, default=0.8,
         help='Dropout probability. Default is 0.8.')
+    parser.add_argument('-wl', '--weighted_loss', type=str, default="exp", choices=['exp', "lin", "log", 'None'],
+        help='Whether to use weighted loss and what type. Default is exp.')
+    parser.add_argument('-radius', '--radius', type=int, default=0,
+        help='Radius for the dense graph. Default is 0.')
+    parser.add_argument('-concat', '--concat', type=str, default=False, choices=['True', 'False'],
+        help='Whether to concatenate the output of the GAT layers. Default is False.')
     parser.add_argument('-rs', '--random_state', type=int, default=42,
         help='Random state for splitting the dataset. Default is 42.')
     parser.add_argument('-trs', '--test_random_state', type=int, default=43,
@@ -163,6 +186,8 @@ if __name__ == "__main__":
         help='Number of workers for the DataLoader (ATM unused). Default is 2.')
     parser.add_argument('-os', '--oversampling', type=str, default=False, choices=['True', 'False'],
         help='Whether to use oversampling. Default is False.')
+    parser.add_argument('-dev', '--device', type=str, default="0",
+        help='Device to use. Default is 0.')
 
     # Parse arguments
     args = parser.parse_args()
@@ -172,16 +197,10 @@ if __name__ == "__main__":
     if args.hidden_channels_dense is None:
         args.hidden_channels_dense = args.hidden_channels
 
-    # Set random state
-    import random
-    import numpy as np
-    import torch
-
-    random.seed(args.random_state)
-    np.random.seed(args.random_state)
-    torch.manual_seed(args.random_state)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # Ensure boolean arguments are converted to actual booleans
+    args.concat = args.concat.lower() == "true"
+    args.train = args.train.lower() == "true"
+    args.test = args.test.lower() == "true"
 
     import time
 
