@@ -283,3 +283,60 @@ def create_sql_table_query(experiment_name, model_name, num_parameters, args, va
     );
     """
     return query
+
+def create_sql_table_query_2(experiment_name, model_name, num_parameters, args, val_metrics_dict, test_metrics_dict):
+    query = f"""
+    INSERT INTO arterial_gnet_finetuning_2 (
+        experiment, model_base_name, num_parameters,
+        test_size, val_size, batch_size, total_epochs, hidden_channels, hidden_channels_dense,
+        optimizer, learning_rate, lr_scheduler, num_global_layers, num_segment_layers,
+        num_dense_layers, num_out_layers, attn_heads, aggregation, dropout, weighted_loss,
+        radius, concat, random_state, test_random_state, folds, test_folds, is_classification, oversampling,
+        val_roc_auc_mean, val_roc_auc_std, val_pr_auc_mean, val_pr_auc_std,
+        val_youden_threshold_mean, val_youden_threshold_std, val_accuracy_mean, val_accuracy_std,
+        val_precision_mean, val_precision_std, val_sensitivity_mean, val_sensitivity_std,
+        val_specificity_mean, val_specificity_std, val_f1_mean, val_f1_std,
+        val_weighted_f1_mean, val_weighted_f1_std, val_mcc_mean, val_mcc_std,
+        val_ppv_mean, val_ppv_std, val_npv_mean, val_npv_std,
+        test_roc_auc_mean, test_roc_auc_std, test_pr_auc_mean, test_pr_auc_std,
+        test_youden_threshold_mean, test_youden_threshold_std, test_accuracy_mean, test_accuracy_std,
+        test_precision_mean, test_precision_std, test_sensitivity_mean, test_sensitivity_std,
+        test_specificity_mean, test_specificity_std, test_f1_mean, test_f1_std,
+        test_weighted_f1_mean, test_weighted_f1_std, test_mcc_mean, test_mcc_std,
+        test_ppv_mean, test_ppv_std, test_npv_mean, test_npv_std
+    ) VALUES (
+        '{experiment_name}', '{model_name}', {num_parameters},
+        {args.test_size}, {args.val_size}, {args.batch_size}, {args.total_epochs},
+        {args.hidden_channels}, {args.hidden_channels_dense}, '{args.optimizer}',
+        {args.learning_rate}, '{args.lr_scheduler}', {args.num_global_layers},
+        {args.num_segment_layers}, {args.num_dense_layers}, {args.num_out_layers},
+        {args.attn_heads}, '{args.aggregation}', {args.dropout}, '{args.weighted_loss}',
+        {args.radius}, {args.concat}, {args.random_state}, {args.test_random_state},
+        {args.folds}, {args.test_folds}, {args.is_classification}, {args.oversampling},
+        {val_metrics_dict['roc_auc_mean']}, {val_metrics_dict['roc_auc_std']},
+        {val_metrics_dict['pr_auc_mean']}, {val_metrics_dict['pr_auc_std']},
+        {val_metrics_dict['optimal_threshold_mean']}, {val_metrics_dict['optimal_threshold_std']},
+        {val_metrics_dict['accuracy_mean']}, {val_metrics_dict['accuracy_std']},
+        {val_metrics_dict['precision_mean']}, {val_metrics_dict['precision_std']},
+        {val_metrics_dict['sensitivity_mean']}, {val_metrics_dict['sensitivity_std']},
+        {val_metrics_dict['specificity_mean']}, {val_metrics_dict['specificity_std']},
+        {val_metrics_dict['f1_mean']}, {val_metrics_dict['f1_std']},
+        {val_metrics_dict['weighted_f1_mean']}, {val_metrics_dict['weighted_f1_std']},
+        {val_metrics_dict['mcc_mean']}, {val_metrics_dict['mcc_std']},
+        {val_metrics_dict['ppv_mean']}, {val_metrics_dict['ppv_std']},
+        {val_metrics_dict['npv_mean']}, {val_metrics_dict['npv_std']},
+        {test_metrics_dict['roc_auc_mean']}, {test_metrics_dict['roc_auc_std']},
+        {test_metrics_dict['pr_auc_mean']}, {test_metrics_dict['pr_auc_std']},
+        {test_metrics_dict['optimal_threshold_mean']}, {test_metrics_dict['optimal_threshold_std']},
+        {test_metrics_dict['accuracy_mean']}, {test_metrics_dict['accuracy_std']},
+        {test_metrics_dict['precision_mean']}, {test_metrics_dict['precision_std']},
+        {test_metrics_dict['sensitivity_mean']}, {test_metrics_dict['sensitivity_std']},
+        {test_metrics_dict['specificity_mean']}, {test_metrics_dict['specificity_std']},
+        {test_metrics_dict['f1_mean']}, {test_metrics_dict['f1_std']},
+        {test_metrics_dict['weighted_f1_mean']}, {test_metrics_dict['weighted_f1_std']},
+        {test_metrics_dict['mcc_mean']}, {test_metrics_dict['mcc_std']},
+        {test_metrics_dict['ppv_mean']}, {test_metrics_dict['ppv_std']},
+        {test_metrics_dict['npv_mean']}, {test_metrics_dict['npv_std']}
+    );
+    """
+    return query

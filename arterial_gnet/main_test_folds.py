@@ -91,8 +91,9 @@ def main(root, args, root_models=None):
                     fold = fold,
                     device = device
                 )
-
             if args.test:
+                if os.path.exists(os.path.join(root_models, "models", model_name + "_tf-{}".format(test_fold))):
+                    os.rename(os.path.join(root_models, "models", model_name + "_tf-{}".format(test_fold)), os.path.join(root_models, "models", model_name))
                 # Run testing
                 for model_test in ["latest"]:
                     run_testing(

@@ -100,8 +100,10 @@ class GATv2Layer(nn.Module):
     def forward(self, x, edge_index, edge_attr=None):
         if self.edge_dim is not None:
             x = self.conv(x, edge_index, edge_attr)
+            attention_weights = None
         else:
-            x = self.conv(x, edge_index)
+            x, attention_weights = self.conv(x, edge_index, return_attention_weights=True)
+        
         x = F.leaky_relu(x, negative_slope=0.2)
         x = self.bn1(x)
         
@@ -111,7 +113,7 @@ class GATv2Layer(nn.Module):
         x = self.bn2(x)
         
         x = self.dropout(x)
-        return x
+        return x, attention_weights
 
 class MLPLayer(nn.Module):
     def __init__(self, in_channels, out_channels, dropout_rate=0.2):
@@ -167,6 +169,7 @@ class ArterialGNet(nn.Module):
         self.dropout = dropout
         self.concat = concat
         self.is_classification = is_classification
+        self.attention_weights = None
 
         if self.num_global_layers > 0:
             self.global_path = torch.nn.ModuleList()
@@ -224,7 +227,7 @@ class ArterialGNet(nn.Module):
         segment_x = segment_data.x
         if self.segment_path is not None:
             for layer in self.segment_path:
-                segment_x = layer(segment_x, segment_data.edge_index, segment_data.edge_attr)
+                segment_x, _ = layer(segment_x, segment_data.edge_index, segment_data.edge_attr)
             segment_x = self.aggregation(segment_x, segment_data.batch)
         else:
             segment_x = None
@@ -232,8 +235,12 @@ class ArterialGNet(nn.Module):
         # Process dense_graph
         dense_x = dense_data.x
         if self.dense_path is not None:
-            for layer in self.dense_path:
-                dense_x = layer(dense_x, dense_data.edge_index)
+            for idx, layer in enumerate(self.dense_path):
+                if idx == 0:  # Only extract attention weights from the first layer
+                    dense_x, attention_weights = layer(dense_x, dense_data.edge_index)
+                    self.attention_weights = attention_weights
+                else:
+                    dense_x, _ = layer(dense_x, dense_data.edge_index)
             dense_x = self.aggregation(dense_x, dense_data.batch)
         else:
             dense_x = None
@@ -245,4 +252,4 @@ class ArterialGNet(nn.Module):
         for layer in self.output_path:
             out = layer(out)
 
-        return out
+        return out, self.attention_weights

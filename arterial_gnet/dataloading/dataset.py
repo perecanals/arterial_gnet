@@ -8,7 +8,7 @@ from torch_geometric.data import InMemoryDataset, Data
 
 from sklearn.model_selection import train_test_split
 
-from arterial_gnet.dataloading.utils import load_pickle, z_score_normalization, min_max_normalization, mean_centering_normalization, normalize_vector
+from arterial_gnet.dataloading.utils import load_pickle, z_score_normalization, min_max_normalization
 
 class ArterialMapsDataset(InMemoryDataset):
     """
@@ -126,7 +126,7 @@ class ArterialMapsDataset(InMemoryDataset):
     def __getitem__(self, idx):
         data = self.data_list[idx]
         if self.transform is not None:
-            data.dense_data = self.transform(data.dense_data)
+            data = self.transform(data)
         return data
     
     def clean_node_indexing(self, graph_nx):

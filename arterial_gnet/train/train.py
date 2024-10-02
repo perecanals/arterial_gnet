@@ -67,7 +67,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         # Set gradients to 0
         optimizer.zero_grad() 
         # Perform forward pass with batch
-        out = model(batch.to(device)).to(device)
+        out = model(batch.to(device))[0].to(device)
     
         out = torch.squeeze(out)
         # Raise error if nan in out
@@ -115,7 +115,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         # In validation we do not keep track of gradients
         with torch.no_grad():
             # Perform forward pass with batch
-            out = model(batch.to(device)).to(device)
+            out = model(batch.to(device))[0].to(device)
             out = torch.squeeze(out)
             # Compute validation loss
             if args.is_classification:

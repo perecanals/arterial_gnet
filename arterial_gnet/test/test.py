@@ -7,7 +7,7 @@ from arterial_gnet.utils.metrics import compute_accuracy, compute_rmse, compute_
 
 import torch
 
-def run_testing(root, model_name, test_loader, model="latest", device="cpu", fold=None, is_classification=False):
+def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=None, is_classification=False):
     """
     Performs testing of a model over a test set. If the model is not input, it loads the 
     best model (model_best.pth) from the corresponditestng model dir.
@@ -55,7 +55,7 @@ def run_testing(root, model_name, test_loader, model="latest", device="cpu", fol
         # In validation we do not keep track of gradients
         with torch.no_grad():
             # Perform inference with single graph
-            pred = model(graph.to(device))
+            pred = model(graph.to(device))[0]
         if is_classification:
             # Get label from graph
             label = graph.y_class
@@ -306,7 +306,7 @@ def run_external_testing(model_dir, model_name, test_loader, dataset_name="exter
         # In validation we do not keep track of gradients
         with torch.no_grad():
             # Perform inference with single graph
-            pred = model(graph.to(device))
+            pred = model(graph.to(device))[0]
         if is_classification:
             # Get label from graph
             label = graph.y_class
