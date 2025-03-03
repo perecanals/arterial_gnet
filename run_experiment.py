@@ -88,15 +88,49 @@ def run_experiment(experiment_name, param_iterator):
         parser.add_argument("--class_loss", type=str, default=params[30])
         parser.add_argument("--num_workers", type=int, default=params[31])
         parser.add_argument("--device", type=str, default=params[32])
+        parser.add_argument("--use_skip", action="store_true", default=params[33])
+        parser.add_argument("--use_lap_pos_enc", action="store_true", default=params[34])
+        parser.add_argument("--lap_pos_enc_dim", type=int, default=params[35])
+        parser.add_argument("--max_seq_len", type=int, default=params[36])
+        parser.add_argument('-pr', '--pooling_ratio', type=float, default=params[37])
+        parser.add_argument('-sn', '--sample_neighbor', action="store_true", default=params[38])
+        parser.add_argument('-sa', '--sparse_attention', action="store_true", default=params[39])
+        parser.add_argument('-sl', '--structure_learning', action="store_true", default=params[40])
+        parser.add_argument('-lamb', '--lamb', type=float, default=params[41])
+        parser.add_argument('--alpha', type=float, default=params[42])
+        parser.add_argument('--warmup_steps', type=int, default=params[43])
 
         # Parse arguments
         args = parser.parse_args()
 
         # Check if model_name with same experiment is already in the database
-        model_name = "{}_bs-{}_te-{}_hc-{}_hcd-{}_op-{}_lr-{}_lrs-{}_ngl-{}_nsl-{}_ndl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_concat-{}_wl-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
-                    args.total_epochs, args.hidden_channels, args.hidden_channels_dense, args.optimizer, args.learning_rate, args.lr_scheduler, \
+        if args.base_model_name == "ArterialGNet":
+            model_name = "{}_bs-{}_te-{}_hc-{}_hcd-{}_op-{}_lr-{}_lrs-{}_warmup-{}_ngl-{}_nsl-{}_ndl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_concat-{}_skip-{}_cl-{}_alpha-{}_wl-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+                    args.total_epochs, args.hidden_channels, args.hidden_channels_dense, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
                         args.num_global_layers, args.num_segment_layers, args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
-                            args.dropout, args.radius, args.concat, args.weighted_loss, args.oversampling, args.random_state, args.test_random_state)
+                            args.dropout, args.radius, args.concat, args.use_skip, args.class_loss, args.alpha, args.weighted_loss, args.oversampling, args.random_state, args.test_random_state)
+        elif args.base_model_name == "GraphTransformer":
+            model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs-{}_warmup-{}_nl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_concat-{}_lpe-{}_ped-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+                    args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
+                        args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
+                            args.dropout, args.radius, args.concat, args.use_lap_pos_enc, args.pos_enc_dim, \
+                                args.oversampling, args.random_state, args.test_random_state)
+        elif args.base_model_name == "Transformer":
+            model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs- }_warmup-{}_nl-{}_nol-{}_ah-{}_agg-{}_drop-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+                        args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
+                            args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
+                                args.dropout, args.oversampling, args.random_state, args.test_random_state)
+        elif args.base_model_name == "GAT":
+            model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs-{}_warmup-{}_nl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_concat-{}_next-{}_skip-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+                        args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
+                            args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
+                                args.dropout, args.radius, args.concat, args.next_layer, args.use_skip, args.oversampling, args.random_state, args.test_random_state)
+        elif args.base_model_name == "HGPSL":
+            model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs-{}_warmup-{}_nl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_pr-{}_sn-{}_sa-{}_sl-{}_lamb-{}_os-{}_rs-{}_trs-{}".format(
+                        args.base_model_name, args.batch_size, args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, 
+                            args.lr_scheduler, args.warmup_steps, args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation,
+                                args.dropout, args.radius, args.pooling_ratio, args.sample_neighbor, args.sparse_attention, args.structure_learning, args.lamb,
+                                        args.oversampling, args.random_state, args.test_random_state)
         if args.is_classification:
             model_name += "_class"
         if args.tag is not None:
@@ -117,14 +151,14 @@ def run_experiment(experiment_name, param_iterator):
         num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
         # Run "external" testing
-        for test_fold in range(params[24]):
+        for test_fold in range(args.test_folds):
             model_name_ = model_name + "_tf-{}".format(test_fold)
             model_dir = os.path.join(root_models, "models", model_name_)
-            testing_main(model_dir, root_test, external_dataset_name, device=args.device)
+            testing_main(model_dir, args.base_model_name, root_test, external_dataset_name, device=args.device)
 
         # Move all tf-... folders to the model_name folder
         os.makedirs(os.path.join(root_models, "models", model_name), exist_ok=True)
-        for test_fold in range(params[24]):
+        for test_fold in range(args.test_folds):
             model_name_ = model_name + "_tf-{}".format(test_fold)
             shutil.move(os.path.join(root_models, "models", model_name_), os.path.join(root_models, "models", model_name, model_name_))
 
@@ -151,22 +185,22 @@ def run_experiment(experiment_name, param_iterator):
         print(f"Results for model {model_name} have been inserted into the database.")
 
 if __name__ == "__main__":
-    experiment_name = "prova_radius_10"
+    experiment_name = "prova_adamw_cos"
     base_model_name_list = ["ArterialGNet"]
     test_size_list = [0.2]
     val_size_list = [0.2]
-    total_epochs_list = [1000]
-    batch_size_list = [64]
+    total_epochs_list = [500]
+    batch_size_list = [128]
     hidden_channels_list = [32]
     hidden_channels_dense_list = [32]
-    optimizer_list = ["adam"]
-    learning_rate_list = [1e-3]
-    lr_scheduler_list = ["poly"]
+    optimizer_list = ["adamw"]
+    learning_rate_list = [1e-2]
+    lr_scheduler_list = ["cos"]
     num_global_layers_list = [0]
     num_segment_layers_list = [0]
     num_dense_layers_list = [1]
     num_out_layers_list = [1]
-    attn_heads_list = [1]
+    attn_heads_list = [8]
     aggregation_list = ["mean"]
     dropout_list = [0.2]
     radius_list = [10]
@@ -184,7 +218,18 @@ if __name__ == "__main__":
     tag_list = [experiment_name]
     class_loss_list = ["ce"]
     num_workers_list = [2]
-    device_list = [1]
+    device_list = [0]
+    use_skip_list = [True]
+    use_lap_pos_enc_list = [True]
+    lap_pos_enc_dim_list = [8]
+    max_seq_len_list = [256]
+    pooling_ratio_list = [0.8]
+    sample_neighbor_list = [False]
+    sparse_attention_list = [False]
+    structure_learning_list = [False]
+    lamb_list = [1.0]
+    alpha_list = [1.0]
+    warmup_steps_list = [30]
 
     # Define the iterator
     param_iterator = product(
@@ -194,7 +239,9 @@ if __name__ == "__main__":
         num_out_layers_list, attn_heads_list, aggregation_list, dropout_list, radius_list,
         concat_list, weighted_loss_list, random_state_list, test_random_state_list,
         folds_list, skip_folds_list, test_folds_list, train_list, test_list, oversampling_list,
-        is_classification_list, tag_list, class_loss_list, num_workers_list, device_list
+        is_classification_list, tag_list, class_loss_list, num_workers_list, device_list, use_skip_list, 
+        use_lap_pos_enc_list, lap_pos_enc_dim_list, max_seq_len_list, pooling_ratio_list, sample_neighbor_list,
+        sparse_attention_list, structure_learning_list, lamb_list, alpha_list, warmup_steps_list
     )
 
     run_experiment(experiment_name, param_iterator)

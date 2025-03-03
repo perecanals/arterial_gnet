@@ -1,11 +1,10 @@
-
 import os, shutil, json
 
 from arterial_gnet.dataloading.data_augmentation import get_transforms
 from arterial_gnet.dataloading.dataloading import get_test_folds, get_data_loaders_with_filenames
 from arterial_gnet.models.models import get_model
 from arterial_gnet.train.train import run_training
-from arterial_gnet.train.losses import LinearWeightedMSELoss, ScaledExponentialWeightedMSELoss, LogarithmicWeightedMSELoss, NLLLoss
+from arterial_gnet.train.losses import LinearWeightedMSELoss, ScaledExponentialWeightedMSELoss, LogarithmicWeightedMSELoss, NLLLoss, CombinedLoss
 from torch.nn.modules.loss import MSELoss
 from arterial_gnet.test.test import run_testing
 
@@ -37,7 +36,7 @@ def main(root, args, root_models=None):
     folds_filenames = get_test_folds(root, args)
 
     for test_fold in range(args.test_folds):
-        # if test_fold < 4:
+        # if test_fold < 3:
         #     continue
         print("Test fold: {}".format(test_fold))
 
@@ -49,8 +48,7 @@ def main(root, args, root_models=None):
             if args.folds is not None and args.skip_folds is not None and fold < args.skip_folds:
                 continue
             # Get data loaders
-            train_loader, val_loader, test_loader = get_data_loaders_with_filenames(root, train_val_filenames, test_filenames, args, fold, pre_transform, train_transform, test_transform)
-
+            train_loader, val_loader, test_loader = get_data_loaders_with_filenames(root, args, train_val_filenames, test_filenames, fold, pre_transform, train_transform, test_transform)
             with open(os.path.join(root, "dataset.json")) as f:
                 dataset_description = json.load(f)
 
@@ -65,6 +63,8 @@ def main(root, args, root_models=None):
                             loss_function = torch.nn.CrossEntropyLoss(weight = 1 / torch.tensor(dataset_description["graph_class_frequencies"], dtype=torch.float).to(device))
                         elif args.class_loss == "nll":
                             loss_function = NLLLoss(class_frequencies=dataset_description["graph_class_frequencies"])
+                        elif args.class_loss == "combined":
+                            loss_function = CombinedLoss(weight = 1 / torch.tensor(dataset_description["graph_class_frequencies"], dtype=torch.float).to(device), alpha=args.alpha, weighted_loss=args.weighted_loss)
                     else:
                         if args.class_loss == "ce":
                             loss_function = torch.nn.CrossEntropyLoss()
@@ -103,7 +103,8 @@ def main(root, args, root_models=None):
                         model = model_test,
                         device = device,
                         fold = fold,
-                        is_classification = args.is_classification
+                        is_classification = args.is_classification,
+                        combined_loss = args.class_loss == "combined"
                     )
 
         if os.path.exists(os.path.join(root_models, "models", model_name + "_tf-{}".format(test_fold))):
@@ -179,7 +180,7 @@ if __name__ == "__main__":
         help='Whether to test the model. Default is True.')
     parser.add_argument("-class", "--is_classification", action="store_true",
         help="Whether the task is is_classification or regression. Default is False.")
-    parser.add_argument('-cl', '--class_loss', type=str, default="ce", choices=["ce", "nll"],
+    parser.add_argument('-cl', '--class_loss', type=str, default="ce", choices=["ce", "nll", "combined"],
         help='Loss function for classification. Default is ce.')
     parser.add_argument('-tag', '--tag', type=str, default=None,
         help='Additional tag to add to the model name for identification. Default is None.')
@@ -189,6 +190,30 @@ if __name__ == "__main__":
         help='Whether to use oversampling. Default is False.')
     parser.add_argument('-dev', '--device', type=str, default="0",
         help='Device to use. Default is 0.')
+    parser.add_argument('-skip', '--use_residual', action="store_true",
+        help='Whether to use skip connections in GATv2Layer. Default is False.')
+    parser.add_argument('-lpe', '--use_lap_pos_enc', action="store_true",
+        help='Whether to use Laplacian positional encoding. Default is False.')
+    parser.add_argument('-ped', '--pos_enc_dim', type=int, default=8,
+        help='Positional encoding dimension. Default is 8.')
+    parser.add_argument('-msl', '--max_seq_len', type=int, default=256,
+        help='Maximum sequence length. Default is 256.')
+    parser.add_argument('-next', '--next_layer', action="store_true",
+        help='Whether to use the GAT layer with NeXt configuration (inspired by ConvNeXt micro-design principles). Default is False.')
+    parser.add_argument('-pr', '--pooling_ratio', type=float, default=0.8,
+        help='Pooling ratio for HGPSL model. Default is 0.8.')
+    parser.add_argument('-sn', '--sample_neighbor', action="store_true",
+        help='Whether to use neighbor sampling in HGPSL. Default is False.')
+    parser.add_argument('-sa', '--sparse_attention', action="store_true",
+        help='Whether to use sparse attention in HGPSL. Default is False.')
+    parser.add_argument('-sl', '--structure_learning', action="store_true",
+        help='Whether to use structure learning in HGPSL. Default is False.')
+    parser.add_argument('-lamb', '--lamb', type=float, default=1.0,
+        help='Lambda parameter for HGPSL structure learning. Default is 1.0.')
+    parser.add_argument('-alpha', '--alpha', type=float, default=0.5,
+        help='Alpha parameter for combined loss. Default is 0.5.')
+    parser.add_argument('-warmup', '--warmup_steps', type=int, default=30,
+        help='Warmup steps for cosine decay with warmup learning rate scheduler. Default is 30.')
 
     # Parse arguments
     args = parser.parse_args()

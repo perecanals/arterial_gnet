@@ -8,6 +8,8 @@ class DenseRadiusGraph(object):
     def __call__(self, data):
         if hasattr(data, 'dense_data'):
             data.dense_data = self.transform(data.dense_data)
+        else:
+            data = self.transform(data)
         return data
 
 class ApplyPositionTransformToFeatures(object):

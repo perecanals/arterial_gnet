@@ -1,7 +1,8 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch_geometric.nn import GATv2Conv, global_add_pool, global_mean_pool, global_max_pool, BatchNorm
+from arterial_gnet.models.arterial_gnet import ArterialGNet
+from arterial_gnet.models.graph_transformer import GraphTransformerNet
+from arterial_gnet.models.transformer import TransformerNet
+from arterial_gnet.models.GAT import GATv2Net
+from arterial_gnet.models.HGPSL import HGPSLModel
 
 def get_model(args, dataset_description, device = "cpu"):
     """
@@ -36,52 +37,178 @@ def get_model(args, dataset_description, device = "cpu"):
         String with the model name, where data (train and test) will be 
         in os.path.join(root, "models", model_name).
     """
-    model_name = "{}_bs-{}_te-{}_hc-{}_hcd-{}_op-{}_lr-{}_lrs-{}_ngl-{}_nsl-{}_ndl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_concat-{}_wl-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
-                args.total_epochs, args.hidden_channels, args.hidden_channels_dense, args.optimizer, args.learning_rate, args.lr_scheduler, \
-                    args.num_global_layers, args.num_segment_layers, args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
-                        args.dropout, args.radius, args.concat, args.weighted_loss, args.oversampling, args.random_state, args.test_random_state)
-    if args.is_classification:
-        model_name += "_class"
-    if args.tag is not None:
-        model_name += "_tag-{}".format(args.tag)
-
-    print("------------------------------------------------ Model information")
-    print(f"Training model:                   {args.base_model_name}")
-    print(f"Hidden channels:                  {args.hidden_channels}")
-    print(f"Hidden channels (dense layer):    {args.hidden_channels_dense}")
-    print(f"Number of global layers:          {args.num_global_layers}")
-    print(f"Number of segment layers:         {args.num_segment_layers}")
-    print(f"Number of dense layers:           {args.num_dense_layers}")
-    print(f"Number of output layers:          {args.num_out_layers}")
-    print(f"Number of attention heads:        {args.attn_heads}")
-    print(f"Aggregation method:               {args.aggregation}")
-    print(f"Dropout:                          {args.dropout}")
-    print(f"Radius [mm] (connectivity):       {args.radius}")
-    print(f"Concatenate output of GAT layers: {args.concat}")
 
     # Initialize model with the corresponding parameters
-    model = ArterialGNet(
-        global_in_dim=dataset_description["num_global_features"], 
-        segment_node_in_dim=dataset_description["num_segment_node_features"], 
-        segment_edge_in_dim=dataset_description["num_segment_edge_features"],
-        dense_node_in_dim=dataset_description["num_dense_node_features"],
-        hidden_dim=args.hidden_channels, 
-        hidden_dim_dense=args.hidden_channels_dense,
-        out_dim=2 if args.is_classification else 1,
-        num_global_layers=args.num_global_layers,
-        num_segment_layers=args.num_segment_layers, 
-        num_dense_layers=args.num_dense_layers,
-        num_out_layers=args.num_out_layers,
-        attn_heads=args.attn_heads,
-        aggregation=args.aggregation,
-        dropout=args.dropout,
-        concat=args.concat,
-        is_classification=args.is_classification
+    if args.base_model_name == "ArterialGNet":
+        model_name = "{}_bs-{}_te-{}_hc-{}_hcd-{}_op-{}_lr-{}_lrs-{}_warmup-{}_ngl-{}_nsl-{}_ndl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_concat-{}_skip-{}_cl-{}_alpha-{}_wl-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+                    args.total_epochs, args.hidden_channels, args.hidden_channels_dense, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
+                        args.num_global_layers, args.num_segment_layers, args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
+                            args.dropout, args.radius, args.concat, args.use_skip, args.class_loss, args.alpha, args.weighted_loss, args.oversampling, args.random_state, args.test_random_state)
+        if args.is_classification:
+            model_name += "_class"
+        if args.tag is not None:
+            model_name += "_tag-{}".format(args.tag)
+
+        print("------------------------------------------------ Model information")
+        print(f"Training model:                   {args.base_model_name}")
+        print(f"Hidden channels:                  {args.hidden_channels}")
+        print(f"Hidden channels (dense layer):    {args.hidden_channels_dense}")
+        print(f"Number of global layers:          {args.num_global_layers}")
+        print(f"Number of segment layers:         {args.num_segment_layers}")
+        print(f"Number of dense layers:           {args.num_dense_layers}")
+        print(f"Number of output layers:          {args.num_out_layers}")
+        print(f"Number of attention heads:        {args.attn_heads}")
+        print(f"Aggregation method:               {args.aggregation}")
+        print(f"Dropout:                          {args.dropout}")
+        print(f"Radius [mm] (connectivity):       {args.radius}")
+        print(f"Concatenate output of GAT layers: {args.concat}")
+
+        model = ArterialGNet(
+            global_in_dim=dataset_description["num_global_features"], 
+            segment_node_in_dim=dataset_description["num_segment_node_features"], 
+            segment_edge_in_dim=dataset_description["num_segment_edge_features"],
+            dense_node_in_dim=dataset_description["num_dense_node_features"],
+            hidden_dim=args.hidden_channels, 
+            hidden_dim_dense=args.hidden_channels_dense,
+            out_dim=2 if args.is_classification else 1,
+            num_global_layers=args.num_global_layers,
+            num_segment_layers=args.num_segment_layers, 
+            num_dense_layers=args.num_dense_layers,
+            num_out_layers=args.num_out_layers,
+            attn_heads=args.attn_heads,
+            aggregation=args.aggregation,
+            dropout=args.dropout,
+            concat=args.concat,
+            is_classification=args.is_classification,
+            use_skip=args.use_skip,
+            combined_loss=True if args.class_loss == "combined" else False
+            ).to(device)
+    elif args.base_model_name == "GraphTransformer":
+        model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs-{}_warmup-{}_nl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_concat-{}_lpe-{}_ped-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+                    args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
+                        args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
+                            args.dropout, args.radius, args.concat, args.use_lap_pos_enc, args.pos_enc_dim, \
+                                args.oversampling, args.random_state, args.test_random_state)
+        if args.is_classification:
+            model_name += "_class"
+        if args.tag is not None:
+            model_name += "_tag-{}".format(args.tag)
+
+        print("------------------------------------------------ Model information")
+        print(f"Training model:                    {args.base_model_name}")
+        print(f"Hidden channels:                   {args.hidden_channels}")
+        print(f"Number of transformer layers:      {args.num_dense_layers}")
+        print(f"Number of output layers:           {args.num_out_layers}")
+        print(f"Number of attention heads:         {args.attn_heads}")
+        print(f"Aggregation method:                {args.aggregation}")
+        print(f"Dropout:                           {args.dropout}")
+        print(f"Radius [mm] (connectivity):        {args.radius}")
+        print(f"Concatenate output of MHA layers:  {args.concat}")
+        print(f"Use Laplacian positional encoding: {args.use_lap_pos_enc}")
+        print(f"Positional encoding dimension:     {args.pos_enc_dim}")
+
+        model = GraphTransformerNet(
+            dense_node_in_dim=dataset_description["num_dense_node_features"],
+            hidden_dim=args.hidden_channels,
+            out_dim=2 if args.is_classification else 1,
+            num_layers=args.num_dense_layers,
+            num_out_layers=args.num_out_layers,
+            attn_heads=args.attn_heads,
+            aggregation=args.aggregation,
+            dropout=args.dropout,
+            concat=args.concat,
+            use_pos_enc=args.use_lap_pos_enc,
+            pos_enc_dim=args.pos_enc_dim
+            ).to(device)
+    
+    elif args.base_model_name == "Transformer":
+        model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs-{}_warmup-{}_nl-{}_nol-{}_ah-{}_agg-{}_drop-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+                    args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
+                        args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
+                            args.dropout, args.oversampling, args.random_state, args.test_random_state)
+        if args.is_classification:
+            model_name += "_class"
+        if args.tag is not None:
+            model_name += "_tag-{}".format(args.tag)
+
+        print("------------------------------------------------ Model information")
+        print(f"Training model:                    {args.base_model_name}")
+        print(f"Hidden channels:                   {args.hidden_channels}")
+        print(f"Number of transformer layers:      {args.num_dense_layers}")
+        print(f"Number of output layers:           {args.num_out_layers}")
+        print(f"Number of attention heads:         {args.attn_heads}")
+        print(f"Aggregation method:                {args.aggregation}")
+        print(f"Dropout:                           {args.dropout}")
+
+        model = TransformerNet(
+            in_dim=dataset_description["num_dense_node_features"],
+            hidden_dim=args.hidden_channels,
+            out_dim=2 if args.is_classification else 1,
+            num_layers=args.num_dense_layers,
+            num_out_layers=args.num_out_layers,
+            attn_heads=args.attn_heads,
+            aggregation=args.aggregation,
+            dropout=args.dropout,
+            pos_enc_dim=args.pos_enc_dim
+            ).to(device)
+    elif args.base_model_name == "GAT":
+        model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs-{}_warmup-{}_nl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_concat-{}_next-{}_skip-{}_os-{}_rs-{}_trs-{}".format(args.base_model_name, args.batch_size, \
+                    args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
+                        args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation, \
+                            args.dropout, args.radius, args.concat, args.next_layer, args.use_skip, args.oversampling, args.random_state, args.test_random_state)
+        if args.is_classification:
+            model_name += "_class"
+        if args.tag is not None:
+            model_name += "_tag-{}".format(args.tag)
+
+        model = GATv2Net(
+            node_in_dim=dataset_description["num_dense_node_features"],
+            edge_in_dim=None,
+            hidden_dim=args.hidden_channels,
+            out_dim=2 if args.is_classification else 1,
+            num_layers=args.num_dense_layers,
+            num_out_layers=args.num_out_layers,
+            attn_heads=args.attn_heads,
+            aggregation=args.aggregation,
+            dropout=args.dropout,
+            concat=args.concat,
+            use_skip=args.use_skip,
+            next_layer=args.next_layer
+        ).to(device)
+
+    elif args.base_model_name == "HGPSL":
+        model_name = "{}_bs-{}_te-{}_hc-{}_op-{}_lr-{}_lrs-{}_warmup-{}_nl-{}_nol-{}_ah-{}_agg-{}_drop-{}_r-{}_pr-{}_sn-{}_sa-{}_sl-{}_lamb-{}_os-{}_rs-{}_trs-{}".format(
+                    args.base_model_name, args.batch_size,
+                        args.total_epochs, args.hidden_channels, args.optimizer, args.learning_rate, args.lr_scheduler, args.warmup_steps, \
+                            args.num_dense_layers, args.num_out_layers, args.attn_heads, args.aggregation,
+                                args.dropout, args.radius, args.pooling_ratio, args.sample_neighbor, 
+                                    args.sparse_attention, args.structure_learning, args.lamb,
+                                        args.oversampling, args.random_state, args.test_random_state)
+        if args.is_classification:
+            model_name += "_class"
+        if args.tag is not None:
+            model_name += "_tag-{}".format(args.tag)
+
+        model = HGPSLModel(
+            node_in_dim=dataset_description["num_dense_node_features"],
+            hidden_dim=args.hidden_channels,
+            num_classes=2 if args.is_classification else 1,
+            pooling_ratio=args.pooling_ratio,
+            dropout=args.dropout,
+            sample_neighbor=args.sample_neighbor,
+            sparse_attention=args.sparse_attention,
+            structure_learning=args.structure_learning,
+            lamb=args.lamb
         ).to(device)
 
     print(f"Number of parameters:             {sum(p.numel() for p in model.parameters() if p.requires_grad)}\n")
         
     return model, model_name
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import GATv2Conv, global_add_pool, global_mean_pool, global_max_pool, BatchNorm
 
 class GATv2Layer(nn.Module):
     def __init__(self, in_channels, out_channels, edge_dim=None, dropout_rate=0.2, attn_heads=1, concat=False):

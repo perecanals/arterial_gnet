@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from arterial_gnet.train.lr_schedulers import PolyLRScheduler
+from arterial_gnet.train.lr_schedulers import PolyLRScheduler, CosineDecayWithWarmupLRScheduler
 from arterial_gnet.train.utils import make_train_plot, compute_roc_pr_auc
 from arterial_gnet.utils.metrics import compute_accuracy, compute_rmse
 
@@ -44,7 +44,7 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         Device to use for training. The default is "cpu".
 
     """
-    def train_step(model, batch):
+    def train_step(model, batch, combined_loss=False):
         """
         Performs a training step for a batch of graphs.
 
@@ -62,37 +62,53 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         metric : float
             Accuracy for the batch if is_classification is True otherwise RMSE.
         """
-        # Set model in training mode
-        model.train()
-        # Set gradients to 0
-        optimizer.zero_grad() 
-        # Perform forward pass with batch
-        out = model(batch.to(device))[0].to(device)
-    
-        out = torch.squeeze(out)
-        # Raise error if nan in out
-        if torch.isnan(out).any():
-            raise ValueError("NaN in output.")
-        # Compute loss
-        if args.is_classification:
-            loss = loss_function(out, batch.y_class)
+        if not combined_loss:
+            # Set gradients to 0
+            optimizer.zero_grad() 
+            # Perform forward pass with batch
+            out = model(batch)[0].to(device)
+
+            out = torch.squeeze(out)
+            # Raise error if nan in out
+            if torch.isnan(out).any():
+                raise ValueError("NaN in output.")
+            # Compute loss
+            if args.is_classification:
+                loss = loss_function(out, batch.y_class)
+                # Compute back propagation
+                loss.backward() 
+                # Update weights with optimizer
+                optimizer.step()
+                # Compute accuracy for training
+                metric = compute_accuracy(out.argmax(dim=1), batch.y_class)
+            else:
+                loss = loss_function(out, batch.y)
+                # Compute back propagation
+                loss.backward() 
+                # Update weights with optimizer
+                optimizer.step()
+                # Compute RMSE for training
+                metric = compute_rmse(out, batch.y)
+        else:
+            # Set gradients to 0
+            optimizer.zero_grad() 
+            # Perform forward pass with batch
+            out, reg_out = model(batch)[0]
+            # To device
+            out = out.to(device)
+            reg_out = reg_out.to(device)
+            # Compute loss
+            loss = loss_function(out, reg_out, batch.y_class, batch.y)
             # Compute back propagation
             loss.backward() 
             # Update weights with optimizer
             optimizer.step()
             # Compute accuracy for training
             metric = compute_accuracy(out.argmax(dim=1), batch.y_class)
-        else:
-            loss = loss_function(out, batch.y)
-            # Compute back propagation
-            loss.backward() 
-            # Update weights with optimizer
-            optimizer.step()
-            # Compute RMSE for training
-            metric = compute_rmse(out, batch.y)
+
         return loss, metric, out
 
-    def val_step(model, batch):
+    def val_step(model, batch, combined_loss=False):
         """
         Performs a validation step for a batch of graphs.
 
@@ -114,20 +130,28 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         model.eval()
         # In validation we do not keep track of gradients
         with torch.no_grad():
-            # Perform forward pass with batch
-            out = model(batch.to(device))[0].to(device)
-            out = torch.squeeze(out)
-            # Compute validation loss
-            if args.is_classification:
-                if len(out.shape) == 1:
-                    out = out.unsqueeze(0)
-                loss = loss_function(out, batch.y_class)
-                # Compute accuracy for validation
-                metric = compute_accuracy(out.argmax(dim=1), batch.y_class)
+            if not combined_loss:
+                    # Perform forward pass with batch
+                    out = model(batch)[0].to(device)
+                    # Compute validation loss
+                    if args.is_classification:
+                        loss = loss_function(out, batch.y_class)
+                        # Compute accuracy for validation
+                        metric = compute_accuracy(out.argmax(dim=1), batch.y_class)
+                    else:
+                        loss = loss_function(out, batch.y)
+                        # Compute RMSE for training
+                        metric = compute_rmse(out, batch.y)
             else:
-                loss = loss_function(out, batch.y)
-                # Compute RMSE for training
-                metric = compute_rmse(out, batch.y)
+                out, reg_out = model(batch)[0]
+                # To device
+                out = out.to(device)
+                reg_out = reg_out.to(device)
+                # Compute loss
+                loss = loss_function(out, reg_out, batch.y_class, batch.y)
+                # Compute accuracy for validation
+                metric = compute_accuracy(out.argmax(dim=1), batch.y_class)  
+
         return loss, metric, out
     
     print("\n------------------------------------------------ Training parameters")
@@ -145,6 +169,8 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
     if fold is not None:
         model_path = os.path.join(model_path, f"fold_{fold}")
     os.makedirs(model_path, exist_ok=True)
+
+    combined_loss = True if args.class_loss == "combined" else False
     
     # Define optimizer and scheduler
     if args.optimizer == "adam":
@@ -160,6 +186,13 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
             lr=args.learning_rate, 
             momentum=0.9, 
             weight_decay=1e-03)
+    elif args.optimizer == "adamw":
+        optimizer = torch.optim.AdamW(
+            model.parameters(), 
+            lr=args.learning_rate,
+            betas=(0.9, 0.999),
+            weight_decay=1e-03
+            )
     
     if args.lr_scheduler is not None:
         if args.lr_scheduler == "plateau":
@@ -178,6 +211,14 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
                                         initial_lr=args.learning_rate,
                                         max_steps=args.total_epochs,
                                         exponent=0.9)
+        elif args.lr_scheduler == "cos":
+            scheduler = CosineDecayWithWarmupLRScheduler(
+                optimizer,
+                max_lr=args.learning_rate,
+                max_steps=args.total_epochs,
+                warmup_steps=args.warmup_steps,
+                min_lr=args.learning_rate * 0.05,
+            )
         
     # Initializes lists for loss and accuracy evolution during training
     losses_train = []
@@ -202,6 +243,8 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
 
     # Starts training
     for epoch in range(0, args.total_epochs + 1):
+        # Set model in training mode
+        model.train()
         print("Epoch: {}/{}".format(epoch, args.total_epochs), end="\r")
         # Initializes in-epoch variables
         total_epoch_loss_train, total_epoch_loss_val = 0, 0
@@ -216,13 +259,13 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         # Iterates over training DataLoader and performs a training step for each batch
         for batch in train_loader:
             # Performs training step
-            loss_train, met_train, out_train = train_step(model, batch)
+            loss_train, met_train, out_train = train_step(model, batch, combined_loss=combined_loss)
             # Adds loss to epoch loss
             total_epoch_loss_train += loss_train.detach()
             # Adds batch accuracy/rmse to list for epoch
             metric_train_epoch_list.append(met_train)
             # Update the number of graphs
-            num_graphs_train += batch.segment_data.batch.max().item() + 1
+            num_graphs_train += batch.batch.max().item() + 1
 
             if args.is_classification:
                 preds_train += list(out_train[:, 1].cpu().detach().numpy())
@@ -251,13 +294,13 @@ def run_training(root, model, model_name, train_loader, val_loader, loss_functio
         # Iterates over validation DataLoader and performs a training step for each batch
         for batch in val_loader:
             # Performs validation step
-            loss_val, met_val, out = val_step(model, batch)
+            loss_val, met_val, out = val_step(model, batch, combined_loss=combined_loss)
             # Adds loss to epoch loss
             total_epoch_loss_val += loss_val
             # Adds accuracy to list for epoch
             metric_val_epoch_list.append(met_val)
             # Update the number of graphs
-            num_graphs_val += batch.segment_data.batch.max().item() + 1
+            num_graphs_val += batch.batch.max().item() + 1
 
             if args.is_classification:
                 preds_val += list(out[:, 1].cpu().detach().numpy())

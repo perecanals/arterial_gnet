@@ -29,6 +29,160 @@ def create_arterial_maps_df_test():
 
     return arterial_maps_df_test
 
+def create_arterial_maps_df_test_2023_2024():
+    arterial_maps_df_test = pd.read_excel("/media/Disk_B/databases/ArterialMaps/data/arterial_maps_test_2023_2024_multiple_vessels_df.xlsx")
+    arterial_maps_df_original_test = pd.read_excel("/media/Disk_B/databases/ArterialMaps/data/arterial_maps_2023_2024_with_supersegments.xlsx")
+    arterial_maps_df_original_test = arterial_maps_df_original_test[["proces_id", "classification"]]
+    arterial_maps_df_original_test.rename(columns={"classification": "classification_original"}, inplace=True)
+    arterial_maps_df_test = pd.merge(arterial_maps_df_test, arterial_maps_df_original_test, on="proces_id")
+    arterial_maps_df_test["proces_id"] = arterial_maps_df_test["proces_id"].astype(str)
+    arterial_maps_df_test["classification"] = np.where(arterial_maps_df_test["classification_original"] == 2, 1, arterial_maps_df_test["classification"])
+    arterial_maps_df_test.drop(columns=["classification_original"], inplace=True)
+
+    return arterial_maps_df_test
+
+def create_arterial_maps_df_test_2023_2024_bis():
+    arterial_maps_df_test = pd.read_excel("/media/Disk_B/databases/ArterialMaps/data/arterial_maps_test_2023_2024_bis_multiple_vessels_df.xlsx")
+    arterial_maps_df_original_test = pd.read_excel("/media/Disk_B/databases/ArterialMaps/data/arterial_maps_2023_2024_bis_with_supersegments.xlsx")
+    arterial_maps_df_original_test = arterial_maps_df_original_test[["proces_id", "classification"]]
+    arterial_maps_df_original_test.rename(columns={"classification": "classification_original"}, inplace=True)
+    arterial_maps_df_test = pd.merge(arterial_maps_df_test, arterial_maps_df_original_test, on="proces_id")
+    arterial_maps_df_test["proces_id"] = arterial_maps_df_test["proces_id"].astype(str)
+    arterial_maps_df_test["classification"] = np.where(arterial_maps_df_test["classification_original"] == 2, 1, arterial_maps_df_test["classification"])
+    arterial_maps_df_test.drop(columns=["classification_original"], inplace=True)
+
+    return arterial_maps_df_test
+
+def get_args_from_model_name(model_name):
+    """
+    Parse model name string back into args object.
+    
+    Parameters
+    ----------
+    model_name : str
+        Model name string containing hyperparameters
+        
+    Returns
+    -------
+    args : argparse.Namespace
+        Arguments object with parsed values
+    """
+    import argparse
+    
+    args = argparse.Namespace()
+    
+    # Split the model name into components
+    parts = model_name.split('_')
+    
+    # Set base model name
+    args.base_model_name = parts[0]
+    
+    # Create a mapping of parameter codes to arg names
+    param_mapping = {
+        'ts': 'test_size',
+        'vs': 'val_size',
+        'bs': 'batch_size',
+        'te': 'total_epochs',
+        'hc': 'hidden_channels',
+        'hcd': 'hidden_channels_dense',
+        'op': 'optimizer',
+        'lr': 'learning_rate',
+        'lrs': 'lr_scheduler',
+        'warmup': 'warmup_steps',
+        'ngl': 'num_global_layers',
+        'nsl': 'num_segment_layers',
+        'ndl': 'num_dense_layers',
+        'nl': 'num_dense_layers',
+        'nol': 'num_out_layers',
+        'ah': 'attn_heads',
+        'agg': 'aggregation',
+        'drop': 'dropout',
+        'r': 'radius',
+        'concat': 'concat',
+        'skip': 'use_skip',
+        'cl': 'class_loss',
+        'alpha': 'alpha',
+        'wl': 'weighted_loss',
+        'os': 'oversampling',
+        'rs': 'random_state',
+        'trs': 'test_random_state',
+        'lpe': 'use_lap_pos_enc',
+        'ped': 'pos_enc_dim',
+        'next': 'next_layer',
+        'pr': 'pooling_ratio',
+        'sn': 'sample_neighbor',
+        'sa': 'sparse_attention',
+        'sl': 'structure_learning',
+        'lamb': 'lamb',
+        'tag': 'tag'
+    }
+    
+    # Parse each parameter
+    setattr(args, "val_size", 0.2)
+    setattr(args, "test_size", 0.2)
+    setattr(args, "folds", 5)
+    setattr(args, "test_folds", 5)
+
+    for part in parts[1:]:
+        if part == "class":
+            args.is_classification = True
+            continue
+            
+        if "tag-" in part:
+            args.tag = part.split('-')[1]
+            continue
+            
+        try:
+            code, value = part.split('-')
+            if code in param_mapping:
+                arg_name = param_mapping[code]
+                
+                # Convert value to appropriate type
+                if code in ['bs', 'te', 'hc', 'hcd', 'ngl', 'nsl', 'ndl', 'nl', 'nol', 'ah', 'r', 'warmup', 'rs', 'trs', 'ped']:
+                    value = int(value)
+                elif code in ['lr', 'drop', 'alpha', 'pr', 'lamb']:
+                    value = float(value)
+                elif code in ['concat', 'skip', 'os']:
+                    value = value == 'True'
+                else:
+                    value = str(value)
+                
+                setattr(args, arg_name, value)
+        except:
+            pass
+    
+    # Set default values for any missing args
+    if not hasattr(args, 'is_classification'):
+        args.is_classification = False
+    if not hasattr(args, 'hidden_channels_dense'):
+        args.hidden_channels_dense = args.hidden_channels
+    if not hasattr(args, 'num_global_layers'):
+        args.num_global_layers = 0
+    if not hasattr(args, 'num_segment_layers'):
+        args.num_segment_layers = 0
+    if not hasattr(args, 'attn_heads'):
+        args.attn_heads = None
+    if not hasattr(args, 'aggregation'):
+        args.aggregation = None
+    if not hasattr(args, 'dropout'):
+        args.dropout = None
+    if not hasattr(args, 'weighted_loss'):
+        args.weighted_loss = None
+    if not hasattr(args, 'radius'):
+        args.radius = None
+    if not hasattr(args, 'concat'):
+        args.concat = None
+    if not hasattr(args, 'random_state'):
+        args.random_state = None
+    if not hasattr(args, 'test_random_state'):
+        args.test_random_state = None
+    if not hasattr(args, 'folds'):
+        args.folds = 5
+    if not hasattr(args, 'test_folds'):
+        args.test_folds = 5
+        
+    return args
+
 def build_arterial_maps_df_with_regression_mean(arterial_maps_df, root_models, model_name, test_suffix="test_dataset_2023_test_latest", test_folds=5, val_folds=5):
     # For validation
     if test_suffix == "test_latest":
@@ -287,6 +441,120 @@ def create_sql_table_query(experiment_name, model_name, num_parameters, args, va
 def create_sql_table_query_2(experiment_name, model_name, num_parameters, args, val_metrics_dict, test_metrics_dict):
     query = f"""
     INSERT INTO arterial_gnet_finetuning_2 (
+        experiment, model_base_name, num_parameters,
+        test_size, val_size, batch_size, total_epochs, hidden_channels, hidden_channels_dense,
+        optimizer, learning_rate, lr_scheduler, num_global_layers, num_segment_layers,
+        num_dense_layers, num_out_layers, attn_heads, aggregation, dropout, weighted_loss,
+        radius, concat, random_state, test_random_state, folds, test_folds, is_classification, oversampling,
+        val_roc_auc_mean, val_roc_auc_std, val_pr_auc_mean, val_pr_auc_std,
+        val_youden_threshold_mean, val_youden_threshold_std, val_accuracy_mean, val_accuracy_std,
+        val_precision_mean, val_precision_std, val_sensitivity_mean, val_sensitivity_std,
+        val_specificity_mean, val_specificity_std, val_f1_mean, val_f1_std,
+        val_weighted_f1_mean, val_weighted_f1_std, val_mcc_mean, val_mcc_std,
+        val_ppv_mean, val_ppv_std, val_npv_mean, val_npv_std,
+        test_roc_auc_mean, test_roc_auc_std, test_pr_auc_mean, test_pr_auc_std,
+        test_youden_threshold_mean, test_youden_threshold_std, test_accuracy_mean, test_accuracy_std,
+        test_precision_mean, test_precision_std, test_sensitivity_mean, test_sensitivity_std,
+        test_specificity_mean, test_specificity_std, test_f1_mean, test_f1_std,
+        test_weighted_f1_mean, test_weighted_f1_std, test_mcc_mean, test_mcc_std,
+        test_ppv_mean, test_ppv_std, test_npv_mean, test_npv_std
+    ) VALUES (
+        '{experiment_name}', '{model_name}', {num_parameters},
+        {args.test_size}, {args.val_size}, {args.batch_size}, {args.total_epochs},
+        {args.hidden_channels}, {args.hidden_channels_dense}, '{args.optimizer}',
+        {args.learning_rate}, '{args.lr_scheduler}', {args.num_global_layers},
+        {args.num_segment_layers}, {args.num_dense_layers}, {args.num_out_layers},
+        {args.attn_heads}, '{args.aggregation}', {args.dropout}, '{args.weighted_loss}',
+        {args.radius}, {args.concat}, {args.random_state}, {args.test_random_state},
+        {args.folds}, {args.test_folds}, {args.is_classification}, {args.oversampling},
+        {val_metrics_dict['roc_auc_mean']}, {val_metrics_dict['roc_auc_std']},
+        {val_metrics_dict['pr_auc_mean']}, {val_metrics_dict['pr_auc_std']},
+        {val_metrics_dict['optimal_threshold_mean']}, {val_metrics_dict['optimal_threshold_std']},
+        {val_metrics_dict['accuracy_mean']}, {val_metrics_dict['accuracy_std']},
+        {val_metrics_dict['precision_mean']}, {val_metrics_dict['precision_std']},
+        {val_metrics_dict['sensitivity_mean']}, {val_metrics_dict['sensitivity_std']},
+        {val_metrics_dict['specificity_mean']}, {val_metrics_dict['specificity_std']},
+        {val_metrics_dict['f1_mean']}, {val_metrics_dict['f1_std']},
+        {val_metrics_dict['weighted_f1_mean']}, {val_metrics_dict['weighted_f1_std']},
+        {val_metrics_dict['mcc_mean']}, {val_metrics_dict['mcc_std']},
+        {val_metrics_dict['ppv_mean']}, {val_metrics_dict['ppv_std']},
+        {val_metrics_dict['npv_mean']}, {val_metrics_dict['npv_std']},
+        {test_metrics_dict['roc_auc_mean']}, {test_metrics_dict['roc_auc_std']},
+        {test_metrics_dict['pr_auc_mean']}, {test_metrics_dict['pr_auc_std']},
+        {test_metrics_dict['optimal_threshold_mean']}, {test_metrics_dict['optimal_threshold_std']},
+        {test_metrics_dict['accuracy_mean']}, {test_metrics_dict['accuracy_std']},
+        {test_metrics_dict['precision_mean']}, {test_metrics_dict['precision_std']},
+        {test_metrics_dict['sensitivity_mean']}, {test_metrics_dict['sensitivity_std']},
+        {test_metrics_dict['specificity_mean']}, {test_metrics_dict['specificity_std']},
+        {test_metrics_dict['f1_mean']}, {test_metrics_dict['f1_std']},
+        {test_metrics_dict['weighted_f1_mean']}, {test_metrics_dict['weighted_f1_std']},
+        {test_metrics_dict['mcc_mean']}, {test_metrics_dict['mcc_std']},
+        {test_metrics_dict['ppv_mean']}, {test_metrics_dict['ppv_std']},
+        {test_metrics_dict['npv_mean']}, {test_metrics_dict['npv_std']}
+    );
+    """
+    return query
+
+def create_sql_table_query_2024(experiment_name, model_name, num_parameters, args, val_metrics_dict, test_metrics_dict):
+    query = f"""
+    INSERT INTO arterial_gnet_finetuning_2024 (
+        experiment, model_base_name, num_parameters,
+        test_size, val_size, batch_size, total_epochs, hidden_channels, hidden_channels_dense,
+        optimizer, learning_rate, lr_scheduler, num_global_layers, num_segment_layers,
+        num_dense_layers, num_out_layers, attn_heads, aggregation, dropout, weighted_loss,
+        radius, concat, random_state, test_random_state, folds, test_folds, is_classification, oversampling,
+        val_roc_auc_mean, val_roc_auc_std, val_pr_auc_mean, val_pr_auc_std,
+        val_youden_threshold_mean, val_youden_threshold_std, val_accuracy_mean, val_accuracy_std,
+        val_precision_mean, val_precision_std, val_sensitivity_mean, val_sensitivity_std,
+        val_specificity_mean, val_specificity_std, val_f1_mean, val_f1_std,
+        val_weighted_f1_mean, val_weighted_f1_std, val_mcc_mean, val_mcc_std,
+        val_ppv_mean, val_ppv_std, val_npv_mean, val_npv_std,
+        test_roc_auc_mean, test_roc_auc_std, test_pr_auc_mean, test_pr_auc_std,
+        test_youden_threshold_mean, test_youden_threshold_std, test_accuracy_mean, test_accuracy_std,
+        test_precision_mean, test_precision_std, test_sensitivity_mean, test_sensitivity_std,
+        test_specificity_mean, test_specificity_std, test_f1_mean, test_f1_std,
+        test_weighted_f1_mean, test_weighted_f1_std, test_mcc_mean, test_mcc_std,
+        test_ppv_mean, test_ppv_std, test_npv_mean, test_npv_std
+    ) VALUES (
+        '{experiment_name}', '{model_name}', {num_parameters},
+        {args.test_size}, {args.val_size}, {args.batch_size}, {args.total_epochs},
+        {args.hidden_channels}, {args.hidden_channels_dense}, '{args.optimizer}',
+        {args.learning_rate}, '{args.lr_scheduler}', {args.num_global_layers},
+        {args.num_segment_layers}, {args.num_dense_layers}, {args.num_out_layers},
+        {args.attn_heads}, '{args.aggregation}', {args.dropout}, '{args.weighted_loss}',
+        {args.radius}, {args.concat}, {args.random_state}, {args.test_random_state},
+        {args.folds}, {args.test_folds}, {args.is_classification}, {args.oversampling},
+        {val_metrics_dict['roc_auc_mean']}, {val_metrics_dict['roc_auc_std']},
+        {val_metrics_dict['pr_auc_mean']}, {val_metrics_dict['pr_auc_std']},
+        {val_metrics_dict['optimal_threshold_mean']}, {val_metrics_dict['optimal_threshold_std']},
+        {val_metrics_dict['accuracy_mean']}, {val_metrics_dict['accuracy_std']},
+        {val_metrics_dict['precision_mean']}, {val_metrics_dict['precision_std']},
+        {val_metrics_dict['sensitivity_mean']}, {val_metrics_dict['sensitivity_std']},
+        {val_metrics_dict['specificity_mean']}, {val_metrics_dict['specificity_std']},
+        {val_metrics_dict['f1_mean']}, {val_metrics_dict['f1_std']},
+        {val_metrics_dict['weighted_f1_mean']}, {val_metrics_dict['weighted_f1_std']},
+        {val_metrics_dict['mcc_mean']}, {val_metrics_dict['mcc_std']},
+        {val_metrics_dict['ppv_mean']}, {val_metrics_dict['ppv_std']},
+        {val_metrics_dict['npv_mean']}, {val_metrics_dict['npv_std']},
+        {test_metrics_dict['roc_auc_mean']}, {test_metrics_dict['roc_auc_std']},
+        {test_metrics_dict['pr_auc_mean']}, {test_metrics_dict['pr_auc_std']},
+        {test_metrics_dict['optimal_threshold_mean']}, {test_metrics_dict['optimal_threshold_std']},
+        {test_metrics_dict['accuracy_mean']}, {test_metrics_dict['accuracy_std']},
+        {test_metrics_dict['precision_mean']}, {test_metrics_dict['precision_std']},
+        {test_metrics_dict['sensitivity_mean']}, {test_metrics_dict['sensitivity_std']},
+        {test_metrics_dict['specificity_mean']}, {test_metrics_dict['specificity_std']},
+        {test_metrics_dict['f1_mean']}, {test_metrics_dict['f1_std']},
+        {test_metrics_dict['weighted_f1_mean']}, {test_metrics_dict['weighted_f1_std']},
+        {test_metrics_dict['mcc_mean']}, {test_metrics_dict['mcc_std']},
+        {test_metrics_dict['ppv_mean']}, {test_metrics_dict['ppv_std']},
+        {test_metrics_dict['npv_mean']}, {test_metrics_dict['npv_std']}
+    );
+    """
+    return query
+
+def create_sql_table_query_2024_bis(experiment_name, model_name, num_parameters, args, val_metrics_dict, test_metrics_dict):
+    query = f"""
+    INSERT INTO arterial_gnet_finetuning_2024_bis (
         experiment, model_base_name, num_parameters,
         test_size, val_size, batch_size, total_epochs, hidden_channels, hidden_channels_dense,
         optimizer, learning_rate, lr_scheduler, num_global_layers, num_segment_layers,

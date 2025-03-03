@@ -27,7 +27,6 @@ from arterial_gnet.test.ensemble_utils import *
 from arterial_gnet.test.utils import *
 
 import multiprocessing
-from functools import partial
 import time
 
 from sqlalchemy import create_engine, text
@@ -59,7 +58,9 @@ def run_single_experiment(params, experiment_name, device_index=0, n_gpus=2):
     root_models = os.path.join("/media/Disk_B/databases/ArterialMaps/fine_tuning/experiments", experiment_name)
     os.makedirs(root_models, exist_ok=True)
     root_test = "/media/Disk_B/databases/ArterialMaps/root_test"
-    external_dataset_name = "test_dataset_2023_2024"
+    external_dataset_name = "test_dataset_2023"
+    # root_test = "/media/Disk_B/databases/ArterialMaps/root_test_2023_2024"
+    # external_dataset_name = "test_dataset_2023_2024"
 
     device = device_index % n_gpus
 
@@ -99,15 +100,15 @@ def run_single_experiment(params, experiment_name, device_index=0, n_gpus=2):
     parser.add_argument("--device", type=str, default=params[32])
     parser.add_argument("--use_skip", action="store_true", default=params[33])
     parser.add_argument("--use_lap_pos_enc", action="store_true", default=params[34])
-    parser.add_argument("--lap_pos_enc_dim", type=int, default=params[35])
+    parser.add_argument("--pos_enc_dim", type=int, default=params[35])
     parser.add_argument("--max_seq_len", type=int, default=params[36])
-    parser.add_argument('-pr', '--pooling_ratio', type=float, default=params[37])
-    parser.add_argument('-sn', '--sample_neighbor', action="store_true", default=params[38])
-    parser.add_argument('-sa', '--sparse_attention', action="store_true", default=params[39])
-    parser.add_argument('-sl', '--structure_learning', action="store_true", default=params[40])
-    parser.add_argument('-lamb', '--lamb', type=float, default=params[41])
-    parser.add_argument('-alpha', '--alpha', type=float, default=params[42])
-    parser.add_argument('--warmup_steps', type=int, default=params[43])
+    parser.add_argument("--pooling_ratio", type=float, default=params[37])
+    parser.add_argument("--sample_neighbor", action="store_true", default=params[38])
+    parser.add_argument("--sparse_attention", action="store_true", default=params[39])
+    parser.add_argument("--structure_learning", action="store_true", default=params[40])
+    parser.add_argument("--lamb", type=float, default=params[41])
+    parser.add_argument("--alpha", type=float, default=params[42])
+    parser.add_argument("--warmup_steps", type=int, default=params[43])
 
     # Parse arguments
     args = parser.parse_args()
@@ -189,12 +190,15 @@ def run_experiment_multiprocessing(experiment_name, param_iterator, n_gpus=2):
     
     pool = multiprocessing.Pool(processes=num_processes)
     
-    # Create a partial function with fixed experiment_name
-    run_single_experiment_partial = partial(run_single_experiment, experiment_name=experiment_name, n_gpus=n_gpus)
+    # Create the argument tuples in the correct order
+    experiment_args = [
+        (params, experiment_name, device_idx, n_gpus) 
+        for device_idx, params in enumerate(param_list)
+    ]
     
-    # Run experiments in parallel
+    # Run experiments in parallel without using partial
     start_time = time.time()
-    results = pool.starmap_async(run_single_experiment_partial, ((params, index) for index, params in enumerate(param_list)))
+    results = pool.starmap_async(run_single_experiment, experiment_args)
     
     # Monitor progress
     total_tasks = len(param_list)
@@ -247,7 +251,7 @@ if __name__ == "__main__":
     device_list = [0]
     use_skip_list = [True] 
     use_lap_pos_enc_list = [True] # Only for GraphTransformer
-    lap_pos_enc_dim_list = [8] # Only for GraphTransformer or Transformer
+    pos_enc_dim_list = [8] # Only for GraphTransformer or Transformer
     max_seq_len_list = [256] # Only for Transformer
     pooling_ratio_list = [0.8] # Only for HGPSL
     sample_neighbor_list = [False] # Only for HGPSL
@@ -266,7 +270,7 @@ if __name__ == "__main__":
         concat_list, weighted_loss_list, random_state_list, test_random_state_list,
         folds_list, skip_folds_list, test_folds_list, train_list, test_list, oversampling_list,
         is_classification_list, tag_list, class_loss_list, num_workers_list, device_list, use_skip_list, 
-        use_lap_pos_enc_list, lap_pos_enc_dim_list, max_seq_len_list, pooling_ratio_list, sample_neighbor_list,
+        use_lap_pos_enc_list, pos_enc_dim_list, max_seq_len_list, pooling_ratio_list, sample_neighbor_list,
         sparse_attention_list, structure_learning_list, lamb_list, alpha_list, warmup_steps_list
     )
 

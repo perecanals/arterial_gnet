@@ -6,9 +6,9 @@ import os
 from sklearn.model_selection import train_test_split, StratifiedKFold
 
 from torch.utils.data import DataLoader, WeightedRandomSampler
-# from torch_geometric.loader import DataLoader # This does not allow you to override the collate_fn
+import torch.nn.functional as F
 
-from arterial_gnet.dataloading.dataset import ArterialMapsDataset
+from arterial_gnet.dataloading.dataset import ArterialMapsDataset, DenseGraphDataset, SequenceGraphDataset
 from arterial_gnet.dataloading.utils import load_pickle
 
 def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=None, test_transform=None):
@@ -76,14 +76,32 @@ def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=
         else:
             train_filenames, val_filenames, y_class_train, y_class_val = train_test_split(train_val_filenames, y_class_train_val, test_size = args.val_size, random_state = args.random_state, stratify=y_class_train_val)
         # Now define dataset classes
-        train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
-        val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
-        test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+        if args.base_model_name.startswith("ArterialGNet"):
+            train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
+            val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+            test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+        elif args.base_model_name.startswith("Transformer"):
+            train_dataset = SequenceGraphDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+            val_dataset = SequenceGraphDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+            test_dataset = SequenceGraphDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+        else:
+            train_dataset = DenseGraphDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
+            val_dataset = DenseGraphDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
+            test_dataset = DenseGraphDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
     else:
         print("Training with the whole dataset (ignore validation and test results)\n")
-        train_dataset = ArterialMapsDataset(root, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
-        val_dataset = ArterialMapsDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform, radius = args.radius)
-        test_dataset = ArterialMapsDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+        if args.base_model_name.startswith("ArterialGNet"):
+            train_dataset = ArterialMapsDataset(root, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
+            val_dataset = ArterialMapsDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+            test_dataset = ArterialMapsDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+        elif args.base_model_name.startswith("Transformer"):
+            train_dataset = SequenceGraphDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+            val_dataset = SequenceGraphDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+            test_dataset = SequenceGraphDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+        else:
+            train_dataset = DenseGraphDataset(root, pre_transform = pre_transform, transform = train_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
+            val_dataset = DenseGraphDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
+            test_dataset = DenseGraphDataset(root, raw_file_names_list = dataset_filenames[:2], pre_transform = pre_transform, transform = test_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
 
     print("------------------------------------------------ Dataset information")
     print("Total number of samples:        {}".format(len(dataset_filenames)))
@@ -116,13 +134,13 @@ def get_data_loaders(root, args, fold=None, pre_transform=None, train_transform=
 
     # Define loaders
     if args.oversampling:
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=custom_collate_fn, sampler=sampler_train)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, collate_fn=custom_collate_fn, sampler=sampler_val)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=choose_collate_fn(args.base_model_name), sampler=sampler_train)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, collate_fn=choose_collate_fn(args.base_model_name), sampler=sampler_val)
     else:
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=choose_collate_fn(args.base_model_name))
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=choose_collate_fn(args.base_model_name))
 
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=choose_collate_fn(args.base_model_name))
 
     return train_loader, val_loader, test_loader
 
@@ -153,7 +171,7 @@ def get_test_folds(root, args):
 
     return folds_filenames
 
-def get_data_loaders_with_filenames(root, train_val_filenames, test_filenames, args, fold=None, pre_transform=None, train_transform=None, test_transform=None):
+def get_data_loaders_with_filenames(root, args, train_val_filenames, test_filenames, fold=None, pre_transform=None, train_transform=None, test_transform=None):
     """
     Define train, validation and test data loaders for the dataset.
 
@@ -221,9 +239,18 @@ def get_data_loaders_with_filenames(root, train_val_filenames, test_filenames, a
     else:
         train_filenames, val_filenames, y_class_train, y_class_val = train_test_split(train_val_filenames, y_class_train_val, test_size = args.val_size, random_state = args.random_state, stratify=y_class_train_val)
     # Now define dataset classes
-    train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
-    val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
-    test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+    if args.base_model_name.startswith("ArterialGNet"):
+        train_dataset = ArterialMapsDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, radius = args.radius)
+        val_dataset = ArterialMapsDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+        test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius)
+    elif args.base_model_name.startswith("Transformer"):
+        train_dataset = SequenceGraphDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+        val_dataset = SequenceGraphDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+        test_dataset = SequenceGraphDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, pos_enc_dim = args.pos_enc_dim, max_seq_len = args.max_seq_len)
+    else:   
+        train_dataset = DenseGraphDataset(root, raw_file_names_list = train_filenames, pre_transform = pre_transform, transform = train_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
+        val_dataset = DenseGraphDataset(root, raw_file_names_list = val_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
+        test_dataset = DenseGraphDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = args.radius, use_lap_pos_enc = args.use_lap_pos_enc, pos_enc_dim = args.pos_enc_dim)
 
     print("------------------------------------------------ Dataset information")
     print("Total number of samples:        {}".format(len(dataset_filenames)))
@@ -260,58 +287,84 @@ def get_data_loaders_with_filenames(root, train_val_filenames, test_filenames, a
 
     # Define loaders
     if args.oversampling:
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=custom_collate_fn, sampler=sampler_train)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, collate_fn=custom_collate_fn, sampler=sampler_val)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, collate_fn=choose_collate_fn(args.base_model_name), sampler=sampler_train)
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, collate_fn=choose_collate_fn(args.base_model_name), sampler=sampler_val)
     else:
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate_fn)
+        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=choose_collate_fn(args.base_model_name))
+        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=choose_collate_fn(args.base_model_name))
 
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=choose_collate_fn(args.base_model_name))
 
     return train_loader, val_loader, test_loader
 
-def custom_collate_fn(batch):
-    # Separate the lists of global_data, segment_data, and dense_data
-    y_list = [item.y for item in batch]
-    y_class_list = [item.y_class for item in batch]
-    # Pass y_class list to binary
-    # y_class_list = [torch.tensor(1, dtype=torch.long) if item > 1.5 else torch.tensor(0, dtype=torch.long) for item in y_class_list]
-    global_data_list = [item.global_data for item in batch]
-    segment_data_list = [item.segment_data for item in batch]
-    dense_data_list = [item.dense_data for item in batch]
-    ids = [item.id for item in batch]
-
-    # Standard batching for global data and labels
-    batched_y = torch.stack(y_list, dim=0)
-    batched_y_class = torch.stack(y_class_list, dim=0)
-    batched_global_data = torch.stack(global_data_list, dim=0)
-    batched_ids = ids
-
-    # Use PyG's Batch to batch segment_data and dense_data
-    # Since these are PyG Data objects, they can be directly batched
-    batched_segment_data = Batch.from_data_list(segment_data_list)
-    batched_dense_data = Batch.from_data_list(dense_data_list)
-
-    # Create a new Data object for the batch
-    batch_data = Data()
-    batch_data.y = batched_y
-    batch_data.y_class = batched_y_class
-    batch_data.global_data = batched_global_data
-    batch_data.segment_data = batched_segment_data
-    batch_data.dense_data = batched_dense_data
-    batch_data.id = batched_ids 
-
-    return batch_data
-
-
-def get_test_data_loader(root, pre_transform=None, test_transform=None, radius=0):
+def get_test_data_loader(root, base_model_name, pre_transform=None, test_transform=None, radius=0, use_lap_pos_enc=False, pos_enc_dim=8):
+    if base_model_name.startswith("Transformer"):
+        use_lap_pos_enc = False
+    elif base_model_name.startswith("GraphTransformer"):
+        use_lap_pos_enc = True
     test_filenames = [f for f in os.listdir(os.path.join(root, "raw")) if f.endswith(".pickle")]
     y_class = [load_pickle(os.path.join(root, "raw", f))["classification"] for f in test_filenames]
-    test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = radius)
+    if base_model_name.startswith("ArterialGNet"):
+        test_dataset = ArterialMapsDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = radius)
+    else:
+        test_dataset = DenseGraphDataset(root, raw_file_names_list = test_filenames, pre_transform = pre_transform, transform = test_transform, radius = radius, use_lap_pos_enc = use_lap_pos_enc, pos_enc_dim = pos_enc_dim)
     print("Number of testing samples:      {} ({:.2f}%)\n".format(len(test_dataset), 100 * len(test_dataset) / len(test_filenames)))
     for class_ in range(max(y_class) + 1):
         print(f"\tNumber of samples of class {class_}: {y_class.count(class_)} ({100 * y_class.count(class_)/len(y_class):.2f}%)")
 
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=choose_collate_fn(base_model_name))
 
     return test_loader
+
+def choose_collate_fn(base_model_name):
+    if base_model_name.startswith("ArterialGNet"):
+        return collate_ArterialGNet
+    elif base_model_name.startswith("Transformer"):
+        return custom_collate_sequence
+    else:
+        return collate_DenseGraphDataset
+    
+def collate_ArterialGNet(data_list):
+    device = data_list[0].dense_data.x.device
+    # Create a new Data object for the batch
+    batch = Data()
+
+    # Standard batching for global data and labels
+    batch.y = torch.tensor([data.y for data in data_list], dtype=torch.float).to(device)
+    batch.y_class = torch.tensor([data.y_class for data in data_list], dtype=torch.long).to(device)
+    batch.id = [data.id for data in data_list]
+    batch.global_data = torch.stack([item.global_data for item in data_list], dim=0).to(device)
+
+    # Use PyG's Batch to batch segment_data and dense_data
+    # Since these are PyG Data objects, they can be directly batched
+    batch.segment_data = Batch.from_data_list([item.segment_data for item in data_list])
+    batch.dense_data = Batch.from_data_list([item.dense_data for item in data_list])
+    batch.batch = batch.dense_data.batch
+
+    return batch
+
+def collate_DenseGraphDataset(data_list):
+    # Use PyG's Batch to efficiently handle graphs of different sizes
+    batch = Batch.from_data_list(data_list)
+    
+    # More efficient handling of single-value tensors
+    batch.y = torch.tensor([data.y for data in data_list], dtype=torch.float).to(batch.x.device)
+    batch.y_class = torch.tensor([data.y_class for data in data_list], dtype=torch.long).to(batch.x.device)
+    batch.id = [data.id for data in data_list]
+
+    return batch
+
+
+def custom_collate_sequence(data_list):
+    batch = Batch.from_data_list(data_list)
+    batch.x = batch.x.view(len(batch), -1, batch.x.shape[-1])
+    batch.pos_enc = batch.pos_enc.view(len(batch), -1, batch.pos_enc.shape[-1]).to(batch.x.device)
+    batch.mask = batch.mask.view(len(batch), -1, batch.mask.shape[-1]).to(batch.x.device)
+    
+    batch.y = torch.tensor([data.y for data in batch], dtype=torch.float).to(batch.x.device)
+    batch.y_class = torch.tensor([data.y_class for data in batch], dtype=torch.long).to(batch.x.device)
+    batch.seq_len = torch.tensor([data.seq_len for data in batch], dtype=torch.long).to(batch.x.device)
+    batch.id = [data.id for data in batch]
+
+    return batch
+

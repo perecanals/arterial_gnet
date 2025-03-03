@@ -7,7 +7,7 @@ from arterial_gnet.utils.metrics import compute_accuracy, compute_rmse, compute_
 
 import torch
 
-def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=None, is_classification=False):
+def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=None, is_classification=False, combined_loss=False):
     """
     Performs testing of a model over a test set. If the model is not input, it loads the 
     best model (model_best.pth) from the corresponditestng model dir.
@@ -29,8 +29,10 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
         Fold number. The default is None.
     is_classification : bool, optional
         Whether the task is is_classification or regression. The default is False.
+    combined_loss : bool, optional
+        Whether to use combined loss. The default is False.
     """
-    def test_step(model, graph):
+    def test_step(model, graph, combined_loss=False):
         """
         Performs a testing step for a single graph.
 
@@ -54,19 +56,25 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
         model.eval()
         # In validation we do not keep track of gradients
         with torch.no_grad():
-            # Perform inference with single graph
-            pred = model(graph.to(device))[0]
-        if is_classification:
-            # Get label from graph
-            label = graph.y_class
-            # Compute accuracy for testing
-            metric = compute_accuracy(pred.argmax(dim=1), graph.y_class)
-        else:
-            # Get label from graph
-            label = graph.y
-            # Compute RMSE for testing
-            metric = compute_rmse(pred, graph.y)
+            if not combined_loss:
+                # Perform inference with single graph
+                pred = model(graph.to(device))[0]
+                if is_classification:
+                    # Get label from graph
+                    label = graph.y_class
+                    # Compute accuracy for testing
+                    metric = compute_accuracy(pred.argmax(dim=1), graph.y_class)
+                else:
+                    # Get label from graph
+                    label = graph.y
+                    # Compute RMSE for testing
+                    metric = compute_rmse(pred, graph.y)
+            else:
+                pred, _ = model(graph)[0]
+                label = graph.y_class
+                metric = compute_accuracy(pred.argmax(dim=1), graph.y_class)
         return pred, label, metric
+
     # Define model path
     model_path = os.path.join(root, "models", model_name)
     if fold is not None:
@@ -106,7 +114,7 @@ def run_testing(root, model_name, test_loader, model="best", device="cpu", fold=
 
     preds, labels, metric_test, class_labels = [], [], [], []
     for graph in test_loader:
-        pred, label, met = test_step(model, graph)
+        pred, label, met = test_step(model, graph, combined_loss)
         if is_classification:
             # There are three classes, but we are interested in the probability of the positive class (1 - the prob of the negative class)
             preds.append(1 - pred.cpu().numpy()[0][0])
@@ -256,7 +264,7 @@ def compute_results_over_folds(root, model_name, test_dir_suffix, is_classificat
     with open(os.path.join(model_dir, f"roc_results_{test_dir_suffix}.json"), "w") as f:
         json.dump(roc_results, f)
 
-def run_external_testing(model_dir, model_name, test_loader, dataset_name="external_testing", model="latest", device="cpu", fold=None, is_classification=False):
+def run_external_testing(model_dir, model_name, test_loader, dataset_name="external_testing", model="latest", device="cpu", fold=None, is_classification=False, combined_loss=False):
     """
     Performs testing of a model over a test set. If the model is not input, it loads the 
     best model (model_best.pth) from the corresponditestng model dir.
@@ -281,7 +289,7 @@ def run_external_testing(model_dir, model_name, test_loader, dataset_name="exter
     is_classification : bool, optional
         Whether the task is is_classification or regression. The default is False.
     """
-    def test_step(model, graph):
+    def test_step(model, graph, combined_loss=False):
         """
         Performs a testing step for a single graph.
 
@@ -305,18 +313,23 @@ def run_external_testing(model_dir, model_name, test_loader, dataset_name="exter
         model.eval()
         # In validation we do not keep track of gradients
         with torch.no_grad():
-            # Perform inference with single graph
-            pred = model(graph.to(device))[0]
-        if is_classification:
-            # Get label from graph
-            label = graph.y_class
-            # Compute accuracy for testing
-            metric = compute_accuracy(pred.argmax(dim=1), graph.y_class)
-        else:
-            # Get label from graph
-            label = graph.y
-            # Compute RMSE for testing
-            metric = compute_rmse(pred, graph.y)
+            if not combined_loss:
+                # Perform inference with single graph
+                pred = model(graph.to(device))[0]
+                if is_classification:
+                    # Get label from graph
+                    label = graph.y_class
+                    # Compute accuracy for testing
+                    metric = compute_accuracy(pred.argmax(dim=1), graph.y_class)
+                else:
+                    # Get label from graph
+                    label = graph.y
+                    # Compute RMSE for testing
+                    metric = compute_rmse(pred, graph.y)
+            else:
+                pred, _ = model(graph)[0]
+                label = graph.y_class
+                metric = compute_accuracy(pred.argmax(dim=1), graph.y_class)
         return pred, label, metric
     # Define model path
     model_path = model_dir
@@ -352,7 +365,7 @@ def run_external_testing(model_dir, model_name, test_loader, dataset_name="exter
 
     preds, labels, metric_test, class_labels = [], [], [], []
     for graph in test_loader:
-        pred, label, met = test_step(model, graph)
+        pred, label, met = test_step(model, graph, combined_loss)
         if is_classification:
             # There are three classes, but we are interested in the probability of the positive class (1 - the prob of the negative class)
             preds.append(1 - pred.cpu().numpy()[0][0])
