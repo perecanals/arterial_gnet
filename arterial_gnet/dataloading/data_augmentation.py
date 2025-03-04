@@ -7,9 +7,38 @@ class DenseRadiusGraph(object):
 
     def __call__(self, data):
         if hasattr(data, 'dense_data'):
-            data.dense_data = self.transform(data.dense_data)
+            dense_data = data.dense_data
+            original_edge_index = dense_data.edge_index
+            new_dense_data = self.transform(dense_data)
+            new_edge_index = new_dense_data.edge_index
+
+            combined_edge_index = torch.cat([original_edge_index, new_edge_index], dim=1)
+
+            # Transpose to treat each edge as a row
+            transposed_edges = combined_edge_index.T
+            # Use torch.unique to find unique rows (edges)
+            unique_edges = torch.unique(transposed_edges, dim=0)
+            # Transpose back to the original edge_index format
+            combined_edge_index = unique_edges.T
+
+            dense_data.edge_index = combined_edge_index
+            data.dense_data = dense_data
         else:
-            data = self.transform(data)
+            original_edge_index = data.edge_index
+            new_data = self.transform(data)
+            new_edge_index = new_data.edge_index
+
+            combined_edge_index = torch.cat([original_edge_index, new_edge_index], dim=1)
+
+            # Transpose to treat each edge as a row
+            transposed_edges = combined_edge_index.T
+            # Use torch.unique to find unique rows (edges)
+            unique_edges = torch.unique(transposed_edges, dim=0)
+            # Transpose back to the original edge_index format
+            combined_edge_index = unique_edges.T
+
+            data.edge_index = combined_edge_index
+
         return data
 
 class ApplyPositionTransformToFeatures(object):
